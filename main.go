@@ -39,10 +39,10 @@ import (
 )
 
 var (
-	configFile    = kingpin.Flag("config.file", "Path to configuration file.").Default("snmp.yml").String()
+	configFile    = kingpin.Flag("config.file", "Path to configuration file.").Short('f').Default("snmp.yml").String()
 	webConfig     = webflag.AddFlags(kingpin.CommandLine)
-	listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9116").String()
-	dryRun        = kingpin.Flag("dry-run", "Only verify configuration is valid and exit.").Default("false").Bool()
+	listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Short('l').Default(":9116").String()
+	dryRun        = kingpin.Flag("dry-run", "Only verify configuration is valid and exit.").Short('n').Default("false").Bool()
 
 	// Metrics about the SNMP exporter itself.
 	snmpDuration = prometheus.NewSummaryVec(
