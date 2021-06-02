@@ -50,7 +50,7 @@ LIEBERT_URL       := https://www.vertiv.com/492204/contentassets/b00273585e0a453
 all: mibs
 
 clean:
-	rm -rvf \
+	rm -rf \
 		$(MIBDIR)/* \
 		$(MIBDIR)/.cisco_v2 \
 		$(MIBDIR)/.net-snmp \
@@ -110,7 +110,7 @@ mibs: mib-dir \
   $(MIBDIR)/LIEBERT_GP_PDU.MIB
 
 mib-dir:
-	@mkdir -p -v $(MIBDIR)
+	@mkdir -p $(MIBDIR)
 
 $(MIBDIR)/apc-powernet-mib:
 	@echo ">> Downloading apc-powernet-mib"
@@ -141,7 +141,7 @@ $(MIBDIR)/.cisco_v2:
 	cp mibs/cisco_v2/ENTITY-STATE-MIB.my mibs/ENTITY-STATE-MIB
 	cp mibs/cisco_v2/ENTITY-STATE-TC-MIB.my mibs/ENTITY-STATE-TC-MIB
 	cp mibs/cisco_v2/ISDN-MIB.my mibs/ISDN-MIB
-	@rm -v $(TMP)
+	@rm $(TMP)
 	@touch $(MIBDIR)/.cisco_v2
 
 $(MIBDIR)/IANA-CHARSET-MIB.txt:
@@ -168,7 +168,7 @@ $(MIBDIR)/.kemp-lm:
 	# Workaround invalid timestamps.
 	@sed -i.bak -E 's/"([0-9]{12})[0-9]{2}Z"/"\1Z"/' $(MIBDIR)/*.RELEASE-B100-MIB.txt
 	@rm $(MIBDIR)/*.RELEASE-B100-MIB.txt.bak
-	@rm -v $(TMP)
+	@rm $(TMP)
 	@touch $(MIBDIR)/.kemp-lm
 
 $(MIBDIR)/MIKROTIK-MIB:
@@ -208,7 +208,7 @@ $(MIBDIR)/.paloalto_panos:
 	@echo ">> Downloading paloalto_pano to $(TMP)"
 	@curl $(CURL_OPTS) -o $(TMP) $(PALOALTO_URL)
 	@unzip -j -d $(MIBDIR) $(TMP)
-	@rm -v $(TMP)
+	@rm $(TMP)
 	@touch $(MIBDIR)/.paloalto_panos
 
 $(MIBDIR)/PRINTER-MIB-V2.txt:
@@ -228,7 +228,7 @@ $(MIBDIR)/.synology:
 	@echo ">> Downloading synology to $(TMP)"
 	@curl $(CURL_OPTS) -o $(TMP) $(SYNOLOGY_URL)
 	@unzip -j -d $(MIBDIR) $(TMP)
-	@rm -v $(TMP)
+	@rm $(TMP)
 	@touch $(MIBDIR)/.synology
 
 $(MIBDIR)/UBNT-UniFi-MIB:
@@ -244,14 +244,14 @@ $(MIBDIR)/UBNT-AirMAX-MIB.txt:
 	@echo ">> Downloading ubnt-airos to $(TMP)"
 	@curl $(CURL_OPTS) -o $(TMP) $(UBNT_AIROS_URL)
 	@unzip -j -d $(MIBDIR) $(TMP) UBNT-AirMAX-MIB.txt
-	@rm -v $(TMP)
+	@rm $(TMP)
 
 $(MIBDIR)/WIENER-CRATE-MIB-5704.txt:
 	$(eval TMP := $(shell mktemp))
 	@echo ">> Downloading WIENER-CRATE-MIB to $(TMP)"
 	@curl $(CURL_OPTS) -o $(TMP) $(WIENER_URL)
 	@unzip -j -d $(MIBDIR) $(TMP)
-	@rm -v $(TMP)
+	@rm $(TMP)
 
 $(MIBDIR)/PDU-MIB.txt:
 	@echo ">> Downloading PDU-MIB"
@@ -262,11 +262,11 @@ $(MIBDIR)/IPD-MIB_Q419V9.mib:
 	@echo ">> Downloading IPD-MIB_Q419V9 to $(TMP)"
 	@curl $(CURL_OPTS) -L -o $(TMP) $(INFRAPOWER_URL)
 	@7z e -o$(MIBDIR) $(TMP)
-	@rm -v $(TMP)
+	@rm $(TMP)
 
 $(MIBDIR)/LIEBERT_GP_PDU.MIB:
 	$(eval TMP := $(shell mktemp))
 	@echo ">> Downloading LIEBERT_GP_PDU.MIB to $(TMP)"
 	@curl $(CURL_OPTS) -o $(TMP) $(LIEBERT_URL)
 	@tar --no-same-owner -C $(MIBDIR) -xvf $(TMP)
-	@rm -v $(TMP)
+	@rm $(TMP)
