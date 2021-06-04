@@ -5,13 +5,8 @@ go:
 repository:
     path: github.com/prometheus/snmp_exporter
 build:
-    flags: -a -tags netgo
-    ldflags: |
-        -X github.com/prometheus/common/version.Version={{.Version}}
-        -X github.com/prometheus/common/version.Revision={{.Revision}}
-        -X github.com/prometheus/common/version.Branch={{.Branch}}
-        -X github.com/prometheus/common/version.BuildUser={{user}}@{{host}}
-        -X github.com/prometheus/common/version.BuildDate={{date "20060102-15:04:05"}}
+    flags: -trimpath -a -tags netgo
+    ldflags: -X 'main.Version=0.20.1'
 tarball:
     files:
         - snmp.yml

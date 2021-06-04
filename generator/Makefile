@@ -58,8 +58,12 @@ clean:
 		$(MIBDIR)/.synology \
 		$(MIBDIR)/.kemp-lm
 
+DOLLAR := '$$'
+
 generator: *.go
-	go build
+	go build -trimpath -ldflags '-extldflags -zignore' -ldflags '-extldflags -zdefs'
+	ADDR=`/usr/bin/elfedit -e 'dyn:runpath -o num' generator` && \
+	/usr/bin/elfedit -e "str:set -shnam .dynstr -strndx $$ADDR $(DOLLAR)ORIGIN:$(DOLLAR)ORIGIN/../lib/amd64" generator
 
 generate: generator mibs
 	MIBDIRS=$(MIB_PATH) ./generator --fail-on-parse-errors generate

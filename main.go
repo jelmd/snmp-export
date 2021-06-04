@@ -29,7 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
-	"github.com/prometheus/common/version"
 	"github.com/prometheus/exporter-toolkit/web"
 	webflag "github.com/prometheus/exporter-toolkit/web/kingpinflag"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -37,6 +36,9 @@ import (
 
 	"github.com/prometheus/snmp_exporter/config"
 )
+
+// Version must be set via -ldflags '-X'
+var Version string
 
 var (
 	configFile    = kingpin.Flag("config.file", "Path to configuration file.").Short('f').Default("snmp.yml").String()
@@ -67,7 +69,6 @@ var (
 func init() {
 	prometheus.MustRegister(snmpDuration)
 	prometheus.MustRegister(snmpRequestErrors)
-	prometheus.MustRegister(version.NewCollector("snmp_exporter"))
 }
 
 func handler(w http.ResponseWriter, r *http.Request, logger log.Logger) {
@@ -149,8 +150,7 @@ func main() {
 	kingpin.Parse()
 	logger := promlog.New(promlogConfig)
 
-	level.Info(logger).Log("msg", "Starting snmp_exporter", "version", version.Info())
-	level.Info(logger).Log("build_context", version.BuildContext())
+	level.Info(logger).Log("msg", "Starting snmp_exporter", "version", Version)
 
 	// Bail early if the config is bad.
 	var err error
