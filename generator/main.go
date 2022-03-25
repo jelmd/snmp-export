@@ -84,7 +84,7 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 	if err != nil {
 		return fmt.Errorf("error opening output file: %s", err)
 	}
-	out = append([]byte("# WARNING: This file was auto-generated using snmp_exporter generator, manual changes will be lost.\n"), out...)
+	out = append([]byte("# WARNING: This file was auto-generated using\n#\tsnmp-export-cfg generate -f " + *configFile + " -o " + outputPath + "\n# Manual changes will be lost!\n"), out...)
 	_, err = f.Write(out)
 	if err != nil {
 		return fmt.Errorf("error writing to output file: %s", err)
