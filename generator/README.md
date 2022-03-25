@@ -1,54 +1,25 @@
 
-# SNMP Exporter Config Generator
+# SNMP Export Config Generator
 
-This config generator uses NetSNMP to parse MIBs, and generates configs for the snmp_exporter using them.
-
-## Building
-
-Due to the dynamic dependency on NetSNMP, you must build the generator yourself.
-
-```
-# Debian-based distributions.
-sudo apt-get install unzip build-essential libsnmp-dev p7zip-full # Debian-based distros
-# Redhat-based distributions.
-sudo yum install gcc gcc-g++ make net-snmp net-snmp-utils net-snmp-libs net-snmp-devel # RHEL-based distros
-
-go get github.com/prometheus/snmp_exporter/generator
-cd ${GOPATH-$HOME/go}/src/github.com/prometheus/snmp_exporter/generator
-go build
-make mibs
-```
+This generator named snmp-export-cfg uses NetSNMP to parse MIBs, and generates configs for the snmp_exporter using them.
 
 ## Running
+Since this utility uses libnetsnmp, MIB lookups are made either according to the hardcoded default PATH or, if the environment variable MIBDIRS is set, according to its colon separated list of directories. It is recommended but not mandatory to use the MIBS comming with the snmp-export-cfg package. E.g.:
 
 ```sh
-export MIBDIRS=mibs
-./generator generate
+export MIBDIRS=/usr/share/snmp-export/mibs
+snmp-export-cfg generate -f /usr/share/doc/snmp-export/generator.yml -o /tmp/snmp.yml
 ```
 
-The generator reads in from `generator.yml` and writes to `snmp.yml`.
+Per default the generator reads in from `generator.yml` and writes to `snmp.yml`.
 
-Additional command are available for debugging, use the `help` command to see them.
+Additional options are available, use the `help` command to see them.
 
-## Docker Users
 
-If you would like to run the generator in docker to generate your `snmp.yml` config run the following commands.
-
-The Docker image expects a directory containing the `generator.yml` and a directory called `mibs` that contains all MIBs you wish to use.
-
-This example will generate the example `snmp.yml` which is included in the top level of the snmp_exporter repo:
-```sh
-make mibs
-docker build -t snmp-generator .
-docker run -ti \
-  -v "${PWD}:/opt/" \
-  snmp-generator generate
-```
-
-## File Format
+## Input File Format
 
 `generator.yml` provides a list of modules. The simplest module is just a name
-and a set of OIDs to walk.
+and a set of OIDs to walk. One may use a json formatted config file as well.
 
 ```yaml
 modules:
@@ -65,6 +36,8 @@ modules:
     retries: 3   # How many times to retry a failed request, defaults to 3.
     timeout: 5s  # Timeout for each individual SNMP request, defaults to 5s.
 
+    prefix: String  # Strip off a possible "String" prefix from each metric name
+                    # and add the prefix "String_" to it. Default: empty.
     auth:
       # Community string is used with SNMP v1 and v2. Defaults to "public".
       community: public
