@@ -337,7 +337,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 				EnumValues: n.EnumValues,
 			}
 
-			if cfg.Overrides[metric.Name].Ignore {
+			if cfg.Overrides[n.Label].Ignore {
 				return // Ignored metric.
 			}
 
@@ -399,7 +399,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 					return nil, fmt.Errorf("unknown index type %s for %s", indexNode.Type, lookup.Lookup)
 				}
 				l := &config.Lookup{
-					Labelname: sanitizeLabelName(indexNode.Label),
+					Labelname: renameLabel(indexNode.Label, lookup.Rename),
 					Type:      typ,
 					Oid:       indexNode.Oid,
 				}
@@ -491,6 +491,13 @@ func sanitizeMetricName(name string, prefix string) string {
 	s := strings.TrimSpace(prefix)
 	if len(s) > 0 {
 		return s + "_" + strings.TrimPrefix(invalidLabelCharRE.ReplaceAllString(name, "_"), s)
+	}
+	return invalidLabelCharRE.ReplaceAllString(name, "_")
+}
+func renameLabel(name string, newName string) string {
+	s := strings.TrimSpace(newName)
+	if len(s) > 0 {
+		return invalidLabelCharRE.ReplaceAllString(s, "_")
 	}
 	return invalidLabelCharRE.ReplaceAllString(name, "_")
 }
