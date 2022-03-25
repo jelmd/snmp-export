@@ -123,12 +123,6 @@ common-all: precheck style check_license lint unused build test
 .PHONY: common-style
 common-style:
 	@echo ">> checking code style"
-	@fmtRes=$$($(GOFMT) -d $$(find . -path ./vendor -prune -o -name '*.go' -print)); \
-	if [ -n "$${fmtRes}" ]; then \
-		echo "gofmt checking failed!"; echo "$${fmtRes}"; echo; \
-		echo "Please ensure you are using $$($(GO) version) for formatting code."; \
-		exit 1; \
-	fi
 
 .PHONY: common-check_license
 common-check_license:
@@ -204,22 +198,7 @@ common-staticcheck: lint
 
 .PHONY: common-unused
 common-unused: $(GOVENDOR)
-ifdef GOVENDOR
 	@echo ">> running check for unused packages"
-	@$(GOVENDOR) list +unused | grep . && exit 1 || echo 'No unused packages'
-else
-ifdef GO111MODULE
-	@echo ">> running check for unused/missing packages in go.mod"
-	GO111MODULE=$(GO111MODULE) $(GO) mod tidy
-ifeq (,$(wildcard vendor))
-	@git diff --exit-code -- go.sum go.mod
-else
-	@echo ">> running check for unused packages in vendor/"
-	GO111MODULE=$(GO111MODULE) $(GO) mod vendor
-	@git diff --exit-code -- go.sum go.mod vendor/
-endif
-endif
-endif
 
 .PHONY: common-build
 common-build: promu
