@@ -328,7 +328,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 			}
 
 			metric := &config.Metric{
-				Name:       sanitizeLabelName(n.Label),
+				Name:       sanitizeMetricName(n.Label, cfg.Prefix),
 				Oid:        n.Oid,
 				Type:       t,
 				Help:       n.Description + " - " + n.Oid,
@@ -487,6 +487,13 @@ var (
 	invalidLabelCharRE = regexp.MustCompile(`[^a-zA-Z0-9_]`)
 )
 
+func sanitizeMetricName(name string, prefix string) string {
+	s := strings.TrimSpace(prefix)
+	if len(s) > 0 {
+		return s + "_" + strings.TrimPrefix(invalidLabelCharRE.ReplaceAllString(name, "_"), s)
+	}
+	return invalidLabelCharRE.ReplaceAllString(name, "_")
+}
 func sanitizeLabelName(name string) string {
 	return invalidLabelCharRE.ReplaceAllString(name, "_")
 }
