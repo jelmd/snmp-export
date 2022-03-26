@@ -516,8 +516,9 @@ func TestPduToSample(t *testing.T) {
 		},
 	}
 
+	idxCache := map[string]string{}
 	for _, c := range cases {
-		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, log.NewNopLogger())
+		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, idxCache, log.NewNopLogger())
 		metric := &io_prometheus_client.Metric{}
 		expected := map[string]struct{}{}
 		for _, e := range c.expectedMetrics {
@@ -758,6 +759,7 @@ func TestParseDateAndTime(t *testing.T) {
 }
 
 func TestIndexesToLabels(t *testing.T) {
+    idxCache := map[string]string{}
 	cases := []struct {
 		oid      []int
 		metric   config.Metric
@@ -1001,8 +1003,9 @@ func TestIndexesToLabels(t *testing.T) {
 			result: map[string]string{"a": "1", "chainable_id": "42", "targetlabel": "targetvalue"},
 		},
 	}
+	l := log.NewNopLogger()
 	for _, c := range cases {
-		got := indexesToLabels(c.oid, &c.metric, c.oidToPdu)
+		got := indexesToLabels(c.oid, &c.metric, c.oidToPdu, idxCache, l)
 		if !reflect.DeepEqual(got, c.result) {
 			t.Errorf("indexesToLabels(%v, %v, %v): got %v, want %v", c.oid, c.metric, c.oidToPdu, got, c.result)
 		}
