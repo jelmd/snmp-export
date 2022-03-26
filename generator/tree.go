@@ -400,6 +400,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 				}
 				l := &config.Lookup{
 					Labelname: renameLabel(indexNode.Label, lookup.Rename),
+					Labelvalue: lookup.Revalue,
 					Type:      typ,
 					Oid:       indexNode.Oid,
 				}

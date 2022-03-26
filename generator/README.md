@@ -69,7 +69,10 @@ modules:
       # with that value.
       - source_indexes: [bsnDot11EssIndex]
         lookup: bsnDot11EssSsid
-        rename: ssid				# Rename the label "bsnDot11EssSsid" to "ssid". Default: empty, i.e. keep as is.
+        rename: ssid                # Rename the label "bsnDot11EssSsid" to "ssid". Default: empty, i.e. keep as is.
+        revalue:                    # Optional: mangle the value of "bsnDot11EssSsid"
+          regex: 'foo([0-9]+),.*'   # on match replace it with
+          value: '$1'               # the number (matched group) after "foo"
         drop_source_indexes: false  # If true, delete source index labels for this lookup.
                                     # This avoids label clutter when the new index is unique.
 
