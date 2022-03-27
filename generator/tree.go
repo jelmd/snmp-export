@@ -259,7 +259,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 
 	// Apply type overrides for the current module.
 	for name, params := range cfg.Overrides {
-		if params.Type == "" {
+		if params.Type == "" || name == "_dummy" {
 			continue
 		}
 		// Find node to override.
@@ -276,6 +276,9 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 	toWalk := []string{}
 	for _, oid := range cfg.Walk {
 		// Resolve name to OID if possible.
+		if oid == "_dummy" {
+			continue
+		}
 		n, ok := nameToNode[oid]
 		if ok {
 			toWalk = append(toWalk, n.Oid)
@@ -343,6 +346,9 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 
 			prevType := ""
 			for count, i := range n.Indexes {
+                if i == "_dummy" {
+					continue
+				}
 				index := &config.Index{Labelname: i}
 				indexNode, ok := nameToNode[i]
 				if !ok {
