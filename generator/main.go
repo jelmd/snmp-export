@@ -58,7 +58,7 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 			mNameToNode[n.Oid] = n
 			mNameToNode[n.Label] = n
 		})
-		out, err := generateConfigModule(m, mNodes, mNameToNode, logger)
+		out, err := generateConfigModule(name, m, mNodes, mNameToNode, logger)
 		if err != nil {
 			return err
 		}

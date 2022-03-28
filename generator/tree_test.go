@@ -1940,7 +1940,7 @@ func TestGenerateConfigModule(t *testing.T) {
 		}
 
 		nameToNode := prepareTree(c.node, log.NewNopLogger())
-		got, err := generateConfigModule(c.cfg, c.node, nameToNode, log.NewNopLogger())
+		got, err := generateConfigModule("test", c.cfg, c.node, nameToNode, log.NewNopLogger())
 		if err != nil {
 			t.Errorf("Error generating config in case %d: %s", i, err)
 		}

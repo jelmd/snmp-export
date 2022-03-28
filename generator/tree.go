@@ -252,7 +252,7 @@ func getMetricNode(oid string, node *Node, nameToNode map[string]*Node) (*Node, 
 	return n, oidInstance
 }
 
-func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*Node, logger log.Logger) (*config.Module, error) {
+func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNode map[string]*Node, logger log.Logger) (*config.Module, error) {
 	out := &config.Module{}
 	needToWalk := map[string]struct{}{}
 	tableInstances := map[string][]string{}
@@ -265,7 +265,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 		// Find node to override.
 		n, ok := nameToNode[name]
 		if !ok {
-			level.Warn(logger).Log("msg", "Could not find node to override type", "node", name)
+			level.Warn(logger).Log("msg", "Could not find node to override type", "module", mname, "node", name)
 			continue
 		}
 		// params.Type validated at generator configuration.
@@ -294,7 +294,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 		metricNode, oidType := getMetricNode(oid, node, nameToNode)
 		switch oidType {
 		case oidNotFound:
-			return nil, fmt.Errorf("cannot find oid '%s' to walk", oid)
+			return nil, fmt.Errorf("cannot find oid '%s' to walk (module: %s)", oid, mname)
 		case oidSubtree:
 			needToWalk[oid] = struct{}{}
 		case oidInstance:
@@ -345,19 +345,17 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 			}
 
 			prevType := ""
+			// "copy" Indexes from the MIB node into the metric node
 			for count, i := range n.Indexes {
-                if i == "_dummy" {
-					continue
-				}
 				index := &config.Index{Labelname: i}
 				indexNode, ok := nameToNode[i]
 				if !ok {
-					level.Warn(logger).Log("msg", "Could not find index for node", "node", n.Label, "index", i)
+					level.Warn(logger).Log("msg", "Could not find index for node", "module", mname, "node", n.Label, "index", i)
 					return
 				}
 				index.Type, ok = metricType(indexNode.Type)
 				if !ok {
-					level.Warn(logger).Log("msg", "Can't handle index type on node", "node", n.Label, "index", i, "type", indexNode.Type)
+					level.Warn(logger).Log("msg", "Can't handle index type on node", "module", mname, "node", n.Label, "index", i, "type", indexNode.Type)
 					return
 				}
 				index.FixedSize = indexNode.FixedSize
@@ -371,7 +369,7 @@ func generateConfigModule(cfg *ModuleConfig, node *Node, nameToNode map[string]*
 					if prevType == subtype {
 						metric.Indexes = metric.Indexes[:len(metric.Indexes)-1]
 					} else {
-						level.Warn(logger).Log("msg", "Can't handle index type on node, missing preceding", "node", n.Label, "type", index.Type, "missing", subtype)
+						level.Warn(logger).Log("msg", "Can't handle index type on node, missing preceding", "module", mname, "node", n.Label, "type", index.Type, "missing", subtype)
 						return
 					}
 				}
