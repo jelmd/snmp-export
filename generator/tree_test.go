@@ -1071,8 +1071,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"octetIndex"},
 								Labelname: "octetDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.2",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.2"},
 							},
 						},
 					},
@@ -1119,8 +1119,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"octetIndex"},
 								Labelname: "octetDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.2",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.2"},
 							},
 							{
 								Labelname: "octetIndex",
@@ -1170,8 +1170,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"octetIndex"},
 								Labelname: "octetDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.2",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.2"},
 							},
 							{
 								Labelname: "octetIndex",
@@ -1226,8 +1226,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"octetIndex", "octetIndex2"},
 								Labelname: "octetDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.3",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.3"},
 							},
 							{
 								Labelname: "octetIndex",
@@ -1303,8 +1303,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"octet_Index"},
 								Labelname: "octet_Desc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.2",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.2"},
 							},
 							{
 								Labelname: "octet_Index",
@@ -1465,8 +1465,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"tableIndex"},
 								Labelname: "tableDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.3",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.3"},
 							},
 							{
 								Labelname: "tableIndex",
@@ -1488,8 +1488,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"tableIndex"},
 								Labelname: "tableDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.3",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.3"},
 							},
 							{
 								Labelname: "tableIndex",
@@ -1540,8 +1540,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"tableIndex"},
 								Labelname: "tableDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.3",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.3"},
 							},
 							{
 								Labelname: "tableIndex",
@@ -1563,8 +1563,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labels:    []string{"tableIndex"},
 								Labelname: "tableDesc",
-								Type:      "OctetString",
-								Oid:       "1.1.1.3",
+								Type:      []string{"OctetString"},
+								Oid:       []string{"1.1.1.3"},
 							},
 							{
 								Labelname: "tableIndex",

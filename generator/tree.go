@@ -383,54 +383,90 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	// Apply lookups.
 	for _, metric := range out.Metrics {
 		toDelete := []string{}
+        s := ""
 		for _, lookup := range cfg.Lookups {
 			foundIndexes := 0
-			// See if all lookup indexes are present.
-			for _, index := range metric.Indexes {
-				for _, lookupIndex := range lookup.SourceIndexes {
+			// See if all source indexes are defined for the target.
+			// metric.Indexes are the indexes found in the MIB definition of
+			// the related target aka table.
+			for _, lookupIndex := range lookup.SourceIndexes {
+				found := false
+				for _, index := range metric.Indexes {
 					if index.Labelname == lookupIndex {
 						foundIndexes++
+						found = true
+						break
 					}
 				}
-			}
-			if foundIndexes == len(lookup.SourceIndexes) {
-				if _, ok := nameToNode[lookup.Lookup]; !ok {
-					return nil, fmt.Errorf("unknown index '%s'", lookup.Lookup)
+				if (! found) && (lookupIndex != "_dummy") {
+					s += ", " + lookupIndex
 				}
-				indexNode := nameToNode[lookup.Lookup]
+			}
+			if foundIndexes != len(lookup.SourceIndexes) || foundIndexes == 0 {
+				if len(s) > 0 {
+					m := metric.Name
+					if len( cfg.Prefix) > 0 {
+						m = strings.TrimPrefix(m, cfg.Prefix + "_")
+					}
+					level.Debug(logger).Log("msg", "Skipping lookup", "module", mname, "metric", m, "not defined in MIB", s[2:])
+				}
+				continue
+			}
+
+			// applies to the final value of the lookup
+			l := &config.Lookup{ Labelvalue: lookup.Revalue }
+			for _, oldIndex := range lookup.SourceIndexes {
+				l.Labels = append(l.Labels, sanitizeLabelName(oldIndex))
+			}
+
+			// chain of index names to lookup with the value of the prev. index
+			var indexNode *Node
+			oid_name := strings.Split(lookup.Lookup, "|")
+			last := len(oid_name) - 1
+			for  c, label := range oid_name {
+				var ok bool
+				indexNode, ok = nameToNode[label]
+				if !ok {
+					return nil, fmt.Errorf("unknown index '%s' (module: %s)", lookup.Lookup, mname)
+				}
 				typ, ok := metricType(indexNode.Type)
 				if !ok {
-					return nil, fmt.Errorf("unknown index type %s for %s", indexNode.Type, lookup.Lookup)
+					return nil, fmt.Errorf("unknown index type %s for %s (module: %s)", indexNode.Type, label, mname)
 				}
-				l := &config.Lookup{
-					Labelname: renameLabel(indexNode.Label, lookup.Rename),
-					Labelvalue: lookup.Revalue,
-					Type:      typ,
-					Oid:       indexNode.Oid,
-				}
-				for _, oldIndex := range lookup.SourceIndexes {
-					l.Labels = append(l.Labels, sanitizeLabelName(oldIndex))
-				}
-				metric.Lookups = append(metric.Lookups, l)
-				// Make sure we walk the lookup OID(s).
-				if len(tableInstances[metric.Oid]) > 0 {
-					for _, index := range tableInstances[metric.Oid] {
-						needToWalk[indexNode.Oid+index+"."] = struct{}{}
+				l.Type = append(l.Type, typ)
+				l.Oid = append(l.Oid, indexNode.Oid)
+				if (c < last) {
+					if typ != "gauge" {
+						// for indexed lookups we need numbers
+						return nil, fmt.Errorf("Type of index %s in index chain '%s' is not 'gauge' (module: %s)", label, lookup.Lookup, mname)
 					}
-				} else {
 					needToWalk[indexNode.Oid] = struct{}{}
-				}
-				if lookup.DropSourceIndexes {
-					// Avoid leaving the old labelname around.
-					toDelete = append(toDelete, lookup.SourceIndexes...)
+					l.Labelname = append(l.Labelname, sanitizeLabelName(indexNode.Label))
 				}
 			}
+			// the labelname, which should be finally used in the constructed
+			// metric instead of the indexes labels
+			l.Labelname = append(l.Labelname, renameLabel(indexNode.Label, lookup.Rename))
+
+			// Make sure we walk the lookup OID(s).
+			if len(tableInstances[metric.Oid]) > 0 {
+				for _, index := range tableInstances[metric.Oid] {
+					needToWalk[indexNode.Oid+index+"."] = struct{}{}
+				}
+			} else {
+				needToWalk[indexNode.Oid] = struct{}{}
+			}
+			metric.Lookups = append(metric.Lookups, l)
+			if lookup.DropSourceIndexes {
+				// the labels to drop from the final label map
+				toDelete = append(toDelete, lookup.SourceIndexes...)
+				toDelete = append(toDelete, l.Labelname[:last]...)
+			}
 		}
-		for _, l := range toDelete {
-			metric.Lookups = append(metric.Lookups, &config.Lookup{
-				Labelname: sanitizeLabelName(l),
-			})
-		}
+
+		m := &config.Lookup{}
+		m.Labelname = append(m.Labelname , toDelete...)
+		metric.Lookups = append(metric.Lookups, m)
 	}
 
 	// Ensure index label names are sane.
