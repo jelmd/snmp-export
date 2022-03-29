@@ -686,51 +686,75 @@ func indexOidsAsString(indexOids []int, typ string, fixedSize int, implied bool,
 
 func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) map[string]string {
 	labels := map[string]string{}
-	labelOids := map[string][]int{}
+	labelSubOids := map[string][]int{}
 
-	// Covert indexes to useful strings.
+	// Prepare index info for the source indexes to lookup
 	for _, index := range metric.Indexes {
-		str, subOid, remainingOids := indexOidsAsString(indexOids, index.Type, index.FixedSize, index.Implied, index.EnumValues)
-		// The labelvalue is the text form of the index oids.
+		str, subOid, tail := indexOidsAsString(indexOids, index.Type,
+			index.FixedSize, index.Implied, index.EnumValues)
+		// The text form of the subOid to lookup. Here it is the table row
+		// [index] to lookup. Usually nameToOid[index.Labelname] + "." + str
+		// would be the real OID one would need to lookup.
 		labels[index.Labelname] = str
-		// Save its oid in case we need it for lookups.
-		labelOids[index.Labelname] = subOid
-		// For the next iteration.
-		indexOids = remainingOids
+		// The subOid as int[], usually a single row number.
+		labelSubOids[index.Labelname] = subOid
+		// remaining subOids to lookup
+		indexOids = tail
 	}
 
 	// Perform lookups.
 	for _, lookup := range metric.Lookups {
 		if len(lookup.Labels) == 0 {
-			delete(labels, lookup.Labelname)
+			// Lookups without labels are those tagged with drop_source_indexes
+			for _, label := range lookup.Labelname {
+				delete(labels, label)
+			}
 			continue
 		}
-		oid := lookup.Oid
-		for _, label := range lookup.Labels {
-			oid = fmt.Sprintf("%s.%s", oid, listToOid(labelOids[label]))
-		}
-		if pdu, ok := oidToPdu[oid]; ok {
-			if len(lookup.Labelvalue.Value) > 0 {
-				s := idxCache[oid]
-				if len(s) == 0 {
-					s = pduValueAsString(&pdu, lookup.Type)
-					var t string
-					indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
-					if indexes != nil {
-						t = s
-						s = string(lookup.Labelvalue.Regex.ExpandString([]byte{}, lookup.Labelvalue.Value, t, indexes))
-						idxCache[oid] = s
-					}
-					level.Debug(logger).Log("Idx", lookup.Labelname, "old", t, "new", s)
+		last := len(lookup.Oid) - 1
+		for c, oid := range lookup.Oid {
+			s := oid
+			if c == 0 {
+				for _, label := range lookup.Labels {
+					oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[label]))
 				}
-				labels[lookup.Labelname] = s
 			} else {
-				// pretty cheap, so we do not cache
-				labels[lookup.Labelname] = pduValueAsString(&pdu, lookup.Type)
+					oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[lookup.Labelname[c]]))
 			}
-			labelOids[lookup.Labelname] = []int{int(gosnmp.ToBigInt(pdu.Value).Int64())}
-		} else {
-			labels[lookup.Labelname] = ""
+			level.Debug(logger).Log("BaseOid", s, "label", lookup.Labelname[c], "lookupOid", oid)
+			if pdu, ok := oidToPdu[oid]; ok {
+				level.Debug(logger).Log("PDU[%s]=%#v\n", oid, pdu)
+				var typ  string
+				if len(lookup.Type) > 0 {
+					typ = lookup.Type[c]
+				}
+
+				if len(lookup.Labelvalue.Value) > 0 && c == last {
+					s := idxCache[oid]
+					if len(s) == 0 {
+						s = pduValueAsString(&pdu, typ)
+						var t string
+						indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
+						if indexes != nil {
+							t = s
+							s = string(lookup.Labelvalue.Regex.ExpandString([]byte{}, lookup.Labelvalue.Value, t, indexes))
+							idxCache[oid] = s
+						}
+						level.Debug(logger).Log("Idx", lookup.Labelname, "old", t, "new", s)
+					}
+					labels[lookup.Labelname[c]] = s
+				} else {
+					// pretty cheap, so we do not cache
+					labels[lookup.Labelname[c]] = pduValueAsString(&pdu, typ)
+				}
+				a := []int{int(gosnmp.ToBigInt(pdu.Value).Int64())}
+				labelSubOids[lookup.Labelname[c]] = a
+				if c < last {
+					labelSubOids[lookup.Labelname[c+1]] = a
+				}
+			} else {
+				labels[lookup.Labelname[c]] = ""
+			}
 		}
 	}
 
