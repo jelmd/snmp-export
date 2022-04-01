@@ -384,6 +384,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	for _, metric := range out.Metrics {
 		toDelete := []string{}
         s := ""
+		lookupSeen := map[string]int{}
 		for _, lookup := range cfg.Lookups {
 			foundIndexes := 0
 			// See if all source indexes are defined for the target.
@@ -456,17 +457,24 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			} else {
 				needToWalk[indexNode.Oid] = struct{}{}
 			}
-			metric.Lookups = append(metric.Lookups, l)
-			if lookup.DropSourceIndexes {
-				// the labels to drop from the final label map
-				toDelete = append(toDelete, lookup.SourceIndexes...)
-				toDelete = append(toDelete, l.Labelname[:last]...)
+			h := getLookupHash(l);
+			_, ok := lookupSeen[h]
+			if ! ok {
+				metric.Lookups = append(metric.Lookups, l)
+				lookupSeen[h] = 1
+				if lookup.DropSourceIndexes {
+					// the labels to drop from the final label map
+					toDelete = append(toDelete, lookup.SourceIndexes...)
+					toDelete = append(toDelete, l.Labelname[:last]...)
+				}
 			}
 		}
 
-		m := &config.Lookup{}
-		m.Labelname = append(m.Labelname , toDelete...)
-		metric.Lookups = append(metric.Lookups, m)
+		if len(toDelete) > 0 {
+			m := &config.Lookup{}
+			m.Labelname = append(m.Labelname , toDelete...)
+			metric.Lookups = append(metric.Lookups, m)
+		}
 	}
 
 	// Ensure index label names are sane.
@@ -522,6 +530,16 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		}
 	}
 	return out, nil
+}
+
+// Basically used to "compare" and drop duplicated lookups
+func getLookupHash(l *config.Lookup) string {
+	s := strings.Join(l.Labels, ":") + strings.Join(l.Labelname, ":") +
+		strings.Join(l.Oid, ":") + strings.Join(l.Type, ":");
+	if len(l.Labelvalue.Value ) > 0 {
+		s += ":" + l.Labelvalue.Value + ":"  + l.Labelvalue.Regex.String()
+	}
+	return s
 }
 
 var (
