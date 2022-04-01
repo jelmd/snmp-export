@@ -20,7 +20,12 @@ releases](https://github.com/prometheus/snmp_exporter/releases) page.
 
 Visit http://localhost:9116/snmp?target=1.2.3.4 where 1.2.3.4 is the IP of the
 SNMP device to get metrics from. You can also specify a `module` parameter, to
-choose which module to use from the config file.
+choose which module to use from the config file. For production systems which
+pull permanently the exporter one should add the `compact` parameter to the URL.
+This tells the server to create a more compact output by ommitting all the
+optional and usually useless `# HELP` and `# TYPE` comments. This saves a lot
+of bandwith, ressources and thus energy! So a full production URL could be:
+http://localhost:9116/snmp?target=1.2.3.4&module=test&compact
 
 ## Configuration
 

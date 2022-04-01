@@ -26,6 +26,7 @@
 unexport GOBIN
 
 GO           ?= go
+PATCH		?= patch
 GOFMT        ?= $(GO)fmt
 FIRST_GOPATH := $(firstword $(subst :, ,$(shell $(GO) env GOPATH)))
 GOOPTS       ?=
@@ -139,7 +140,7 @@ common-check_license:
 common-deps:
 	@echo ">> getting dependencies"
 ifdef GO111MODULE
-	GO111MODULE=$(GO111MODULE) $(GO) mod download
+	GO111MODULE=$(GO111MODULE) $(GO) mod vendor
 else
 	$(GO) get $(GOOPTS) -t ./...
 endif
@@ -200,8 +201,14 @@ common-staticcheck: lint
 common-unused: $(GOVENDOR)
 	@echo ">> running check for unused packages"
 
+.PHONY: check_vendor
+check_vendor:
+	test -d vendor || $(GO) mod vendor
+	test -f vendor/github.com/prometheus/common/expfmt/text_create.go.orig ||\
+		$(PATCH) -z.orig -b -p1 -i compact_vendor.patch
+
 .PHONY: common-build
-common-build: promu
+common-build: promu check_vendor
 	@echo ">> building binaries"
 	GO111MODULE=$(GO111MODULE) $(PROMU) build --prefix $(PREFIX) $(PROMU_BINARIES)
 

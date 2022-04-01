@@ -209,6 +209,8 @@ type collector struct {
 	target string
 	module *config.Module
 	logger log.Logger
+	compact bool
+	name   string
 }
 
 // Describe implements Prometheus.Collector.
@@ -225,12 +227,19 @@ func (c collector) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error scraping target", nil, nil), err)
 		return
 	}
+	help := ""
+	if ! c.compact {
+		help = "Time SNMP walk/bulkwalk took."
+	}
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc("snmp_scrape_walk_duration_seconds", "Time SNMP walk/bulkwalk took.", nil, nil),
+		prometheus.NewDesc("snmp_scrape_walk_duration_seconds", help, nil, nil),
 		prometheus.GaugeValue,
 		time.Since(start).Seconds())
+	if ! c.compact {
+		help = "PDUs returned from walk."
+	}
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc("snmp_scrape_pdus_returned", "PDUs returned from walk.", nil, nil),
+		prometheus.NewDesc("snmp_scrape_pdus_returned", help, nil, nil),
 		prometheus.GaugeValue,
 		float64(len(pdus)))
 	oidToPdu := make(map[string]gosnmp.SnmpPDU, len(pdus))
@@ -253,7 +262,7 @@ PduLoop:
 			}
 			if head.metric != nil {
 				// Found a match.
-				samples := pduToSamples(oidList[i+1:], &pdu, head.metric, oidToPdu, idxCache, c.logger)
+				samples := pduToSamples(oidList[i+1:], &pdu, head.metric, oidToPdu, idxCache, c.logger, c.compact)
 				for _, sample := range samples {
 					ch <- sample
 				}
@@ -261,8 +270,11 @@ PduLoop:
 			}
 		}
 	}
+	if ! c.compact {
+		help = "Total SNMP time scrape took (walk and processing)."
+	}
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc("snmp_scrape_duration_seconds", "Total SNMP time scrape took (walk and processing).", nil, nil),
+		prometheus.NewDesc("snmp_scrape_duration_seconds", help, nil, nil),
 		prometheus.GaugeValue,
 		time.Since(start).Seconds())
 }
@@ -332,7 +344,7 @@ func parseDateAndTime(pdu *gosnmp.SnmpPDU) (float64, error) {
 	return float64(t.Unix()), nil
 }
 
-func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) []prometheus.Metric {
+func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger, compact bool) []prometheus.Metric {
 	var err error
 	// The part of the OID that is the indexes.
 	labels := indexesToLabels(indexOids, metric, oidToPdu, idxCache, logger)
@@ -362,11 +374,11 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 			return []prometheus.Metric{}
 		}
 	case "EnumAsInfo":
-		return enumAsInfo(metric, int(value), labelnames, labelvalues)
+		return enumAsInfo(metric, int(value), labelnames, labelvalues, compact)
 	case "EnumAsStateSet":
-		return enumAsStateSet(metric, int(value), labelnames, labelvalues)
+		return enumAsStateSet(metric, int(value), labelnames, labelvalues, compact)
 	case "Bits":
-		return bits(metric, pdu.Value, labelnames, labelvalues)
+		return bits(metric, pdu.Value, labelnames, labelvalues, compact)
 	default:
 		// It's some form of string.
 		t = prometheus.GaugeValue
@@ -394,7 +406,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		}
 
 		if len(metric.RegexpExtracts) > 0 {
-			return applyRegexExtracts(metric, pduValueAsString(pdu, metricType), labelnames, labelvalues, logger)
+			return applyRegexExtracts(metric, pduValueAsString(pdu, metricType), labelnames, labelvalues, logger, compact)
 		}
 		// For strings we put the value as a label with the same name as the metric.
 		// If the name is already an index, we do not need to set it again.
@@ -404,7 +416,11 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		}
 	}
 
-	sample, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, metric.Help, labelnames, nil),
+	help := ""
+	if ! compact {
+		help = metric.Help
+	}
+	sample, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, help, labelnames, nil),
 		t, value, labelvalues...)
 	if err != nil {
 		sample = prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error calling NewConstMetric", nil, nil),
@@ -414,8 +430,12 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	return []prometheus.Metric{sample}
 }
 
-func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labelvalues []string, logger log.Logger) []prometheus.Metric {
+func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labelvalues []string, logger log.Logger, compact bool) []prometheus.Metric {
 	results := []prometheus.Metric{}
+	help := ""
+	if ! compact {
+		help = metric.Help + " (regex extracted)"
+	}
 	for name, strMetricSlice := range metric.RegexpExtracts {
 		for _, strMetric := range strMetricSlice {
 			indexes := strMetric.Regex.FindStringSubmatchIndex(pduValue)
@@ -429,7 +449,7 @@ func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labe
 				level.Debug(logger).Log("msg", "Error parsing float64 from value", "metric", metric.Name, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
 				continue
 			}
-			newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name+name, metric.Help+" (regex extracted)", labelnames, nil),
+			newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name+name, help, labelnames, nil),
 				prometheus.GaugeValue, v, labelvalues...)
 			if err != nil {
 				newMetric = prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error calling NewConstMetric for regex_extract", nil, nil),
@@ -442,7 +462,7 @@ func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labe
 	return results
 }
 
-func enumAsInfo(metric *config.Metric, value int, labelnames, labelvalues []string) []prometheus.Metric {
+func enumAsInfo(metric *config.Metric, value int, labelnames, labelvalues []string, compact bool) []prometheus.Metric {
 	// Lookup enum, default to the value.
 	state, ok := metric.EnumValues[int(value)]
 	if !ok {
@@ -451,7 +471,11 @@ func enumAsInfo(metric *config.Metric, value int, labelnames, labelvalues []stri
 	labelnames = append(labelnames, metric.Name)
 	labelvalues = append(labelvalues, state)
 
-	newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name+"_info", metric.Help+" (EnumAsInfo)", labelnames, nil),
+	help := ""
+	if ! compact {
+		help = metric.Help + " (EnumAsInfo)"
+	}
+	newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name+"_info", help, labelnames, nil),
 		prometheus.GaugeValue, 1.0, labelvalues...)
 	if err != nil {
 		newMetric = prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error calling NewConstMetric for EnumAsInfo", nil, nil),
@@ -460,7 +484,7 @@ func enumAsInfo(metric *config.Metric, value int, labelnames, labelvalues []stri
 	return []prometheus.Metric{newMetric}
 }
 
-func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []string) []prometheus.Metric {
+func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []string, compact bool) []prometheus.Metric {
 	labelnames = append(labelnames, metric.Name)
 	results := []prometheus.Metric{}
 
@@ -469,7 +493,11 @@ func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []
 		// Fallback to using the value.
 		state = strconv.Itoa(value)
 	}
-	newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, metric.Help+" (EnumAsStateSet)", labelnames, nil),
+	help := ""
+	if ! compact {
+		help = metric.Help + " (EnumAsStateSet)"
+	}
+	newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, help, labelnames, nil),
 		prometheus.GaugeValue, 1.0, append(labelvalues, state)...)
 	if err != nil {
 		newMetric = prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error calling NewConstMetric for EnumAsStateSet", nil, nil),
@@ -481,7 +509,7 @@ func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []
 		if k == value {
 			continue
 		}
-		newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, metric.Help+" (EnumAsStateSet)", labelnames, nil),
+		newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, help, labelnames, nil),
 			prometheus.GaugeValue, 0.0, append(labelvalues, v)...)
 		if err != nil {
 			newMetric = prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error calling NewConstMetric for EnumAsStateSet", nil, nil),
@@ -492,7 +520,7 @@ func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []
 	return results
 }
 
-func bits(metric *config.Metric, value interface{}, labelnames, labelvalues []string) []prometheus.Metric {
+func bits(metric *config.Metric, value interface{}, labelnames, labelvalues []string, compact bool) []prometheus.Metric {
 	bytes, ok := value.([]byte)
 	if !ok {
 		return []prometheus.Metric{prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "BITS type was not a BISTRING on the wire.", nil, nil),
@@ -501,6 +529,10 @@ func bits(metric *config.Metric, value interface{}, labelnames, labelvalues []st
 	labelnames = append(labelnames, metric.Name)
 	results := []prometheus.Metric{}
 
+	help := ""
+	if ! compact {
+		help = metric.Help + " (Bits)"
+	}
 	for k, v := range metric.EnumValues {
 		bit := 0.0
 		// Most significant byte most significant bit, then most significant byte 2nd most significant bit etc.
@@ -509,7 +541,7 @@ func bits(metric *config.Metric, value interface{}, labelnames, labelvalues []st
 				bit = 1.0
 			}
 		}
-		newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, metric.Help+" (Bits)", labelnames, nil),
+		newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, help, labelnames, nil),
 			prometheus.GaugeValue, bit, append(labelvalues, v)...)
 		if err != nil {
 			newMetric = prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "Error calling NewConstMetric for Bits", nil, nil),

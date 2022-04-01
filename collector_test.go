@@ -518,7 +518,7 @@ func TestPduToSample(t *testing.T) {
 
 	idxCache := map[string]string{}
 	for _, c := range cases {
-		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, idxCache, log.NewNopLogger())
+		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, idxCache, log.NewNopLogger(), false)
 		metric := &io_prometheus_client.Metric{}
 		expected := map[string]struct{}{}
 		for _, e := range c.expectedMetrics {

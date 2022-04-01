@@ -1,0 +1,39 @@
+--- ./vendor/github.com/prometheus/common/expfmt/text_create.go.orig	Fri Apr  1 18:24:35 2022
++++ ./vendor/github.com/prometheus/common/expfmt/text_create.go	Fri Apr  1 18:25:40 2022
+@@ -91,9 +91,10 @@
+ 	}
+ 
+ 	var n int
++	metricType := in.GetType()
+ 
+ 	// Comments, first HELP, then TYPE.
+-	if in.Help != nil {
++	if len(*in.Help) > 0 {
+ 		n, err = w.WriteString("# HELP ")
+ 		written += n
+ 		if err != nil {
+@@ -119,7 +120,7 @@
+ 		if err != nil {
+ 			return
+ 		}
+-	}
++
+ 	n, err = w.WriteString("# TYPE ")
+ 	written += n
+ 	if err != nil {
+@@ -130,7 +131,6 @@
+ 	if err != nil {
+ 		return
+ 	}
+-	metricType := in.GetType()
+ 	switch metricType {
+ 	case dto.MetricType_COUNTER:
+ 		n, err = w.WriteString(" counter\n")
+@@ -149,6 +149,7 @@
+ 	if err != nil {
+ 		return
+ 	}
++	}
+ 
+ 	// Finally the samples, one line for each.
+ 	for _, metric := range in.Metric {

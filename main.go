@@ -98,13 +98,18 @@ func handler(w http.ResponseWriter, r *http.Request, logger log.Logger) {
 		snmpRequestErrors.Inc()
 		return
 	}
+	query.Get("compact")
+	compact := false
+	if len(query["compact"]) > 0 {
+		compact = true
+	}
 
 	logger = log.With(logger, "module", moduleName, "target", target)
 	level.Debug(logger).Log("msg", "Starting scrape")
 
 	start := time.Now()
 	registry := prometheus.NewRegistry()
-	collector := collector{ctx: r.Context(), target: target, module: module, logger: logger}
+	collector := collector{ctx: r.Context(), target: target, module: module, logger: logger, compact: compact, name: moduleName}
 	registry.MustRegister(collector)
 	// Delegate http serving to Prometheus client library, which will call collector.Collect.
 	h := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
