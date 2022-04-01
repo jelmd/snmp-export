@@ -782,7 +782,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{3, 4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "a", Type: "gauge"}, {Labelname: "b", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labels: []string{"a", "b"}, Labelname: "l", Oid: []string{"1.2"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"a", "b"}, Labelname: []string{"l"}, Oid: []string{"1.2"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{"1.2.3.4": gosnmp.SnmpPDU{Value: "eth0"}},
 			result:   map[string]string{"a": "3", "b": "4", "l": "eth0"},
@@ -791,7 +791,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: "l", Oid: []string{"1.2.3"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1.2.3"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{"1.2.3.4": gosnmp.SnmpPDU{Value: "eth0"}},
 			result:   map[string]string{"l": "eth0"},
@@ -800,7 +800,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: "l", Oid: []string{"1.2.3"}, Type: []string{"InetAddressIPv4"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1.2.3"}, Type: []string{"InetAddressIPv4"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{"1.2.3.4": gosnmp.SnmpPDU{Value: []byte{5, 6, 7, 8}}},
 			result:   map[string]string{"l": "5.6.7.8"},
@@ -809,7 +809,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: "l", Oid: []string{"1.2.3"}, Type: []string{"InetAddressIPv6"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1.2.3"}, Type: []string{"InetAddressIPv6"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{"1.2.3.4": gosnmp.SnmpPDU{Value: []byte{5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}}},
 			result:   map[string]string{"l": "0506:0708:090A:0B0C:0D0E:0F10:1112:1314"},
@@ -818,7 +818,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: "l", Oid: []string{"1.2.3"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1.2.3"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{"1.2.3.4": gosnmp.SnmpPDU{Value: []byte{5, 6, 7, 8}}},
 			result:   map[string]string{"l": "0x05060708"},
@@ -827,7 +827,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labelname: "l"}},
+				Lookups: []*config.Lookup{{Labelname: []string{"l"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{},
 			result:   map[string]string{},
@@ -836,7 +836,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{4},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "gauge"}},
-				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: "l", Oid: []string{"1.2.3"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1.2.3"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{},
 			result:   map[string]string{"l": ""},
@@ -905,7 +905,7 @@ func TestIndexesToLabels(t *testing.T) {
 			oid: []int{3, 65, 32, 255},
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "l", Type: "OctetString"}},
-				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: "l", Oid: []string{"1"}}},
+				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{"1.3.65.32.255": gosnmp.SnmpPDU{Value: "octet"}},
 			result:   map[string]string{"l": "octet"},
@@ -975,8 +975,8 @@ func TestIndexesToLabels(t *testing.T) {
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "a", Type: "gauge"}},
 				Lookups: []*config.Lookup{
-					{Labels: []string{"a"}, Labelname: "chainable_id", Oid: []string{"1.1.1.2"}},
-					{Labels: []string{"chainable_id"}, Labelname: "targetlabel", Oid: []string{"2.2.2"}},
+					{Labels: []string{"a"}, Labelname: []string{"chainable_id"}, Oid: []string{"1.1.1.2"}},
+					{Labels: []string{"chainable_id"}, Labelname: []string{"targetlabel"}, Oid: []string{"2.2.2"}},
 				},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{
@@ -991,8 +991,8 @@ func TestIndexesToLabels(t *testing.T) {
 			metric: config.Metric{
 				Indexes: []*config.Index{{Labelname: "a", Type: "gauge"}},
 				Lookups: []*config.Lookup{
-					{Labels: []string{"a"}, Labelname: "chainable_id", Oid: []string{"1.1.1.2"}},
-					{Labels: []string{"chainable_id"}, Labelname: "targetlabel", Oid: []string{"2.2.2"}},
+					{Labels: []string{"a"}, Labelname: []string{"chainable_id"}, Oid: []string{"1.1.1.2"}},
+					{Labels: []string{"chainable_id"}, Labelname: []string{"targetlabel"}, Oid: []string{"2.2.2"}},
 				},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{

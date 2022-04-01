@@ -464,7 +464,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				lookupSeen[h] = 1
 				if lookup.DropSourceIndexes {
 					// the labels to drop from the final label map
-					toDelete = append(toDelete, lookup.SourceIndexes...)
+					toDelete = append(toDelete, l.Labels...)
 					toDelete = append(toDelete, l.Labelname[:last]...)
 				}
 			}
