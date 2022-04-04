@@ -1,7 +1,6 @@
-
 # SNMP Export Config Generator
 
-This generator named snmp-export-cfg uses NetSNMP to parse MIBs, and generates configs for the snmp_exporter using them.
+This generator named snmp-export-cfg uses NetSNMP to parse MIBs, and generates configs for the snmp-exporter using them.
 
 ## Running
 Since this utility uses libnetsnmp, MIB lookups are made either according to the hardcoded default PATH or, if the environment variable MIBDIRS is set, according to its colon separated list of directories. It is recommended but not mandatory to use the MIBS comming with the snmp-export-cfg package. E.g.:
@@ -18,113 +17,379 @@ Additional options are available, use the `help` command to see them.
 
 ## Input File Format
 
-`generator.yml` provides a list of modules. The simplest module is just a name
-and a set of OIDs to walk. One may use a json formatted config file as well.
+The following snippet shows the generic format of the generator input file, which unfortunately was choosen to follow the YAML spec junk. But, once you get annoyed enough by countless errors and whitespace counting/replacing, you may convert it to json format - Go langs yaml parser implementation accepts it as well.
+
+BTW: remember that in yaml hell a list of something can be represented as `[ item1, item2, ... ]` as well as:
+```
+- item1
+- item2
+...
+```
+
+So you may encounter generator files which look different, but accomplish the same.
+
+Below all lower-case only words are literals, all camel case words represent variable strings. Details wrt. the shown literals and variables are explained later.
 
 ```yaml
 modules:
-  module_name:  # The module name. You can have as many modules as you want.
-    walk:       # List of OIDs to walk. Can also be SNMP object names or specific instances.
-      - 1.3.6.1.2.1.2              # Same as "interfaces"
-      - sysUpTime                  # Same as "1.3.6.1.2.1.1.3"
-      - 1.3.6.1.2.1.31.1.1.1.6.40  # Instance of "ifHCInOctets" with index "40"
 
-    version: 2  # SNMP version to use. Defaults to 2.
-                # 1 will use GETNEXT, 2 and 3 use GETBULK.
-    max_repetitions: 25  # How many objects to request with GET/GETBULK, defaults to 25.
-                         # May need to be reduced for buggy devices.
-    retries: 3   # How many times to retry a failed request, defaults to 3.
-    timeout: 5s  # Timeout for each individual SNMP request, defaults to 5s.
+  moduleName:                              # Mandatory. At least one.
 
-    prefix: String  # Strip off a possible "String" prefix from each metric name
-                    # and add the prefix "String_" to it. Default: empty.
-    auth:
-      # Community string is used with SNMP v1 and v2. Defaults to "public".
-      community: public
+    walk:                                  # Mandatory with one or more:
+      - OID
+      - snmpObjectName
+      ...
+    version: snmpVersion                   # 1..3. Default: 2 (i.e. SNMPv2c)
+    max_repetitions: intNumber             # Default: 25
+    retries: intNumber                     # Default: 3
+    timeout: numSeconds                    # Default: 5
+    prefix: metricsPrefix                  # Default: ""
 
-      # v3 has different and more complex settings.
-      # Which are required depends on the security_level.
-      # The equivalent options on NetSNMP commands like snmpbulkwalk
-      # and snmpget are also listed. See snmpcmd(1).
-      username: user  # Required, no default. -u option to NetSNMP.
-      security_level: noAuthNoPriv  # Defaults to noAuthNoPriv. -l option to NetSNMP.
-                                    # Can be noAuthNoPriv, authNoPriv or authPriv.
-      password: pass  # Has no default. Also known as authKey, -A option to NetSNMP.
-                      # Required if security_level is authNoPriv or authPriv.
-      auth_protocol: MD5  # MD5, SHA, SHA224, SHA256, SHA384, or SHA512. Defaults to MD5. -a option to NetSNMP.
-                          # Used if security_level is authNoPriv or authPriv.
-      priv_protocol: DES  # DES, AES, AES192, or AES256. Defaults to DES. -x option to NetSNMP.
-                          # Used if security_level is authPriv.
-      priv_password: otherPass # Has no default. Also known as privKey, -X option to NetSNMP.
-                               # Required if security_level is authPriv.
-      context_name: context # Has no default. -n option to NetSNMP.
-                            # Required if context is configured on the device.
+    auth:                                  # SNMP authentication parameters:
+      community: communityName             #   SNMPv1 & v2c. Default: "public"
 
-    lookups:  # Optional list of lookups to perform.
-              # The default for `keep_source_indexes` is false. Indexes must be unique for this option to be used.
+                                           #   SNMPv3:
+      security_level: secLevel             #   authPriv|authNoPriv|noAuthNoPriv. Default: "noAuthNoPriv"
+      username: userName                   #   Mandatory.
+      password: userPassword               #   auth[No]Priv: Mandatory.
+      auth_protocol: authProto             #   auth[No]Priv: MD5|SHA|SHA224|SHA256|SHA384|SHA512. Default: "MD5"
+      priv_protocol: privProto             #   authPriv: DES|AES|AES192|AES256. Default: "DES"
+      priv_password: privPassword          #   authPriv: Mandatory.
+      context_name: ctxName                #   Default: ""
 
-      # If the index of a table is bsnDot11EssIndex, usually that'd be the label
-      # on the resulting metrics from that table. Instead, use the index to
-      # lookup the bsnDot11EssSsid table entry and create a bsnDot11EssSsid label
-      # with that value.
-      - source_indexes: [bsnDot11EssIndex]
-        lookup: bsnDot11EssSsid
-        rename: ssid                # Rename the label "bsnDot11EssSsid" to "ssid". Default: empty, i.e. keep as is.
-        revalue:                    # Optional: mangle the value of "bsnDot11EssSsid"
-          regex: 'foo([0-9]+),.*'   # on match replace it with
-          value: '$1'               # the number (matched group) after "foo"
-        drop_source_indexes: false  # If true, delete source index labels for this lookup.
-                                    # This avoids label clutter when the new index is unique.
+    lookups:                               # Optional with one or more:
+      - source_indexes:                    #   Mandatory with one or more:
+        - indexName
+        - indexOID
+        ...
+        mprefix:                           # Optional with one or more:
+          - indexNamePrefix
+          - indexOIDPrefix
+          ...
+        drop_source_indexes: boolVal       #   Default: false
+        lookup: tableNameChain             #   Mandatory.
+        rename: newIndexName               #   Default: "" (i.e. do not rename)
+        revalue:                           #   Optional.
+          regex: regexExpr                 #     Default: '.*'
+          value: newValue                  #     Default: "" (i.e. keep value as is). Special value: `@drop@` .. drop metric on match.
 
-     overrides: # Allows for per-module overrides of bits of MIBs
-       metricName:
-         ignore: true # Drops the metric from the output.
-         regex_extracts:
-           Temp: # A new metric will be created appending this to the metricName to become metricNameTemp.
-             - regex: '(.*)' # Regex to extract a value from the returned SNMP walks's value.
-               value: '$1' # The result will be parsed as a float64, defaults to $1.
-           Status:
-             - regex: '.*Example'
-               value: '1' # The first entry whose regex matches and whose value parses wins.
-             - regex: '.*'
-               value: '0'
-         type: DisplayString # Override the metric type, possible types are:
-                             #   gauge:   An integer with type gauge.
-                             #   counter: An integer with type counter.
-                             #   OctetString: A bit string, rendered as 0xff34.
-                             #   DateAndTime: An RFC 2579 DateAndTime byte sequence. If the device has no time zone data, UTC is used.
-                             #   DisplayString: An ASCII or UTF-8 string.
-                             #   PhysAddress48: A 48 bit MAC address, rendered as 00:01:02:03:04:ff.
-                             #   Float: A 32 bit floating-point value with type gauge.
-                             #   Double: A 64 bit floating-point value with type gauge.
-                             #   InetAddressIPv4: An IPv4 address, rendered as 1.2.3.4.
-                             #   InetAddressIPv6: An IPv6 address, rendered as 0102:0304:0506:0708:090A:0B0C:0D0E:0F10.
-                             #   InetAddress: An InetAddress per RFC 4001. Must be preceded by an InetAddressType.
-                             #   InetAddressMissingSize: An InetAddress that violates section 4.1 of RFC 4001 by
-                             #       not having the size in the index. Must be preceded by an InetAddressType.
-                             #   EnumAsInfo: An enum for which a single timeseries is created. Good for constant values.
-                             #   EnumAsStateSet: An enum with a time series per state. Good for variable low-cardinality enums.
-                             #   Bits: An RFC 2578 BITS construct, which produces a StateSet with a time series per bit.
+    overrides:                             # Optional with one or more:
+      metricName:                          #   Mandatory.
+        ignore: boolVal                    #     Default: false
+        type: newType                      #     Default: "" (i.e. keep type as is)
+        regex_extracts:                    #     Optional with one or more:
+          newSuffix:                       #       Default: "" with one or more:
+            -  regex: regexExpr            #         Default: '.*'
+               value: newValue             #         Default: '$1'
+            ...
 ```
 
-### EnumAsInfo and EnumAsStateSet
+The `generator.yml` example provides a coarse grained list of modules which might be useful to get in touch with the exporter and can be used as a starting point for a more fine grained configuration, which meets your needs and saves a lot of energy.
 
-SNMP contains the concept of integer indexed enumerations (enums). There are two ways
-to represent these strings in Prometheus. They can be "info" metrics, or they can be
-"state sets". SNMP does not specify which should be used, and it's up to the use case
-of the data. Some users may also prefer the raw integer value, rather than the string.
+# How it works
+The generator creates a configration for the exporter (an SNMP agent, which queries SNMP targets and translates obtained information into metrics in prometheus format) with just the information it needs to. Therefore only the generator depends on net-snmp libraries to parse the MIB to obtain the numeric OID (simply OID) and textual OID (snmp [object] name), its type (int32, int32, gauge, octet, displayString, etc.), possible index names for tables of the intended targets. The exporter is a fully standalone application wrt. SNMP (doesn't need any MIB or SNMP lib or tools) and is therefore pretty fast and frugal. From a prometheus client's point of view the smallest addressable unit is a *module*. When the exporter receives a `/snmp&module=moduleName` request, it queries the host passed in the `target` parameter of the request for all OIDs in the *walk* section of the module `moduleName` via snmpbulk requests to obtain the required information. The name of the related SNMP object (i.e. textual OID) gets translated into the metric name. If the related object is a table or are table entries, the names and value of its indexes defined within the MIB become the labels and value of the deduced metric. E.g.:
 
-In order to set enum integer to string mapping, you must use one of the two overrides.
+```
+org          OBJECT IDENTIFIER ::= { iso 3 }  --  "iso" = 1
+dod          OBJECT IDENTIFIER ::= { org 6 }
+internet     OBJECT IDENTIFIER ::= { dod 1 }
+mgmt         OBJECT IDENTIFIER ::= { internet 2 }
+mib-2        OBJECT IDENTIFIER ::= { mgmt 1 }
+interfaces   OBJECT IDENTIFIER ::= { mib-2 2 }
+...
+ifTable OBJECT-TYPE
+    SYNTAX      SEQUENCE OF IfEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION "A list of interface entries..."
+    ::= { interfaces 2 }
 
-`EnumAsInfo` should be used for properties that provide inventory-like data. For example
-a device type, the name of a colour etc. It is important that this value is constant.
+ifEntry OBJECT-TYPE
+    SYNTAX      IfEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION "An entry for a particular interface."
+    INDEX   { ifIndex }
+    ::= { ifTable 1 }
 
-`EnumAsStateSet` should be used for things that represent state or that you might want
-to alert on. For example the link state, is it up or down, is it in an error state,
-whether a panel is open or closed etc. Please be careful to not use this for high
-cardinality values as it will generate 1 time series per possible value.
+IfEntry ::=
+    SEQUENCE {
+        ifIndex                 InterfaceIndex,
+        ifInOctets              Counter32,
+        ifOutOctets             Counter32,
+        ...
+    }
 
-## Where to get MIBs
+ifIndex OBJECT-TYPE
+    SYNTAX      InterfaceIndex
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION "A unique value, greater than zero, for each interface..."
+    ::= { ifEntry 1 }
+...
+```
+
+This would generate metrics like:
+```
+ifIndex{ifIndex="83886080"} 83886080
+ifIndex{ifIndex="369098752"} 369098752
+ifIndex{ifIndex="369098753"} 369098753
+...
+ifInOctets{ifIndex="83886080"} 83886080
+ifInOctets{ifIndex="369098752"} 369098752
+ifInOctets{ifIndex="369098753"} 369098753
+...
+ifOutOctets{ifIndex="83886080"} 83886080
+ifOutOctets{ifIndex="369098752"} 369098752
+ifOutOctets{ifIndex="369098753"} 369098753
+```
+
+However, this might not what you want and thus the generator provides settings, which let you mangle the outcome. E.g. *overrides* to drop a metric or to modify its name or value, or *lookups* to modify the generated labels and values, e.g. to resolve the _ifIndex_ number into the interface name by looking up the _ifname_ with the same _ifIndex_ number. Wrt. the MIB the _ifname_ (1.3.6.1.2.1.31.1.1.1.1) is part of the table ifXTable (1.3.6.1.2.1.31.1.1) - the generator would automatically inject it into the *walk* list. So e.g. consider the following generator config file and the unmangled metrics above:
+```
+modules:
+  cisco:
+    walk:
+      - ifTable
+    overrides: &ifTable_overrides
+      ifIndex:
+        ignore: true
+      ...
+    lookups: &ifTable_lookups
+      - source_indexes: [ifIndex]
+        lookup: 1.3.6.1.2.1.31.1.1.1.1 # ifName
+        #drop_source_indexes: true
+```
+
+This would result into something like this:
+```
+ifInOctets{ifIndex="83886080",ifName="Fa0"} 83886080
+ifInOctets{ifIndex="369098752",ifName="Gi0/1"} 369098752
+ifInOctets{ifIndex="369098753",ifName="Gi0/2"} 369098753
+...
+ifOutOctets{ifIndex="83886080",ifName="Fa0"} 83886080
+ifOutOctets{ifIndex="369098752",ifName="Gi0/1"} 369098752
+ifOutOctets{ifIndex="369098753",ifName="Gi0/2"} 369098753
+...
+```
+
+Because there is no value for the ifIndex anymore, one may drop it by removing the comment sign `#` before the `drop_source_indexes` key within the generator config file. Furthermore to rename a label one may use the `lookup.rename` key, to modify its value, or to even drop the whole metric based on the index (alias label) value one may use the `lookup.revalue` key within *lookups*.
+
+
+## modules
+Just the anchor for all modules. The simplest module is just a name and a set of OIDs to walk.
+
+## _moduleName_
+The name of a module, the smallest "addressable" unit for a prometheus client.
+
+## walk: _list_
+List of OIDs and SNMP object names to walk via SNMP. NOTE that object names might be not unique within a MIB and therefore the generated config might not query the intended objects. If unsure, use OIDs instead. Basically if you do a something like `snmpbulkwalk -v 2c -c public -Pu -Pw -OX $targetIP $OID_or_Name` the object name shown after the double colon (`::`) becomes the name of the metric. If the related "table entry" (if any) has an `INDEX` definition all these indexes become the labels of the metric with the obtained index value set.
+
+
+## version: _version_
+SNMP version to use.  1 will use GETNEXT, 2 (stands for 2c) and 3 use GETBULK. For 2 you may need to change/set the community name to use, for 3 all the other authentication/encryption related paramaters.
+
+## max\_repetitions: _intNumber_
+How many objects to request with GET/GETBULK. May need to be reduced for buggy devices.
+
+## retries: _intNumber_
+How many times to retry a failed request.
+
+## timeout: _numSeconds_
+Timeout for each individual SNMP request.
+
+## prefix: _metricsPrefix_
+Ensures that each metric has the prefix _metricsPrefix_. If a metric doesn't have it already, its gets prepend the metric name. Per default no prefix will be used.
+
+## auth
+Authentication paramaters to use for SNMP requests. Depends on SNMP version in use. For v2c the *community* name is needed - usually *public* is used by most devices, so this is the default. For SNMP v3 the required parameters depend on the choosen *security_level*.
+
+### security\_level: _secLevel_
+The security level to use for SNMP v3 requests (same as "-l _secLevel_" for net-snmp), so `noAuthNoPriv` (default), `authNoPriv` or `authPriv`.
+
+### username: _userName_
+The username to use for SNMPv3 requests (same as "-u _userName_" for net-snmp).
+
+### password: _userPassword_
+The password aka authKey to use for SNMPv3 requests (same as "-A _userPassword_" for net-snmp). Required for `authNoPriv` or `authPriv`.
+
+### auth\_protocol: _authProto_
+The protocol to use for authentication for SNMPv3 requests with security levels `authNoPriv` or `authPriv` (same as "-a _authProto_" for net-snmp).
+
+### priv\_password: _privPassword_
+The passphrase to use for SNMP v3 message encryption if security level is set to `authPriv` (same as "-x _privPassword_" for net-snmp).
+
+### priv\_protocol: _privProto_
+The protocol to use for SNMP v3 message encryption if security level is set to `authPriv` (same as "-X _privProto_" for net-snmp).
+
+### context\_name: _ctxName_ # Has no default. -n option to NetSNMP.
+If the SNMP v3 target device has 1+ context defined, use _ctxName_ to access it.
+
+
+## lookups
+Optional list of lookups to perform to mangle label names or values (deduced from index names) or even to drop a metric based on the final value of a label. Lookups get applied in same order they appear in the config file, before any overrides get applied.
+
+### source\_indexes: _list_
+The metric selector to which the lookup gets applied. Only if the related SNMP object (table) definition in the MIB contains *all* indexes named in the given _list_ the lookup gets applied to the metric (deduced from the walked objects).
+
+### mprefix: _list_
+An option to further narrow down, to which metrics this lookup definition gets applied. Only if a metric's name or OID starts with a string in the given _list_ the lookup gets applied to it. This gets handy if several objects use the same index, e.g. `entPhysicalIndex`, but depending on the name of the metric you wanna lookup its textual representation in the `shortNameTable` or `longNameTable`, or look it up in the `entPhysicalName` but rename the label to `fan` or `sensor` depending the name of the metric. The source\_indexes option would be to coarse for it, would produce different labels with the same value.
+
+Per default the list is empty and implies no restriction wrt. the metric's name.
+
+### drop\_source\_indexes: _boolVal_
+If set to `true`, the labels deduced from source\_indexes and all intermediate labels are finally removed from the related metric. This avoids label clutter when the new index is unique.
+
+### lookup: _tableNameChain_
+Use the given _tableNameChain_ to lookup the value of the label. Usually this is just a single table entry name (e.g. `entPhysicalName`) - the source\_indexes name (e.g. entPhysicalIndex) gets used to map the index number to a textual aka human friendly representation. However, for some rare cases one needs an indirect lookup, to resolve the final value. In this case you name all "tables" in the required order separated by a single pipe symbol (`|`). A real world example for it is the CISCO-PROCESS-MIB:
+```
+cpmCPUTotalTable OBJECT-TYPE
+    SYNTAX          SEQUENCE OF CpmCPUTotalEntry
+    MAX-ACCESS      not-accessible
+    STATUS          current
+    DESCRIPTION     "A table of overall CPU statistics."
+    ::= { cpmCPU 1 }
+
+cpmCPUTotalEntry OBJECT-TYPE
+    SYNTAX          CpmCPUTotalEntry
+    MAX-ACCESS      not-accessible
+    STATUS          current
+    DESCRIPTION "Overall information about the CPU load. ..."
+    INDEX           { cpmCPUTotalIndex }
+    ::= { cpmCPUTotalTable 1 }
+
+CpmCPUTotalEntry ::= SEQUENCE {
+        cpmCPUTotalIndex                 Unsigned32,
+        cpmCPUTotalPhysicalIndex         EntPhysicalIndexOrZero,
+        cpmCPUTotal5sec                  Gauge32,
+        ...
+}
+...
+cpmCPUTotalPhysicalIndex OBJECT-TYPE
+    SYNTAX          EntPhysicalIndexOrZero
+    MAX-ACCESS      read-only
+    STATUS          current
+    DESCRIPTION     "The entPhysicalIndex of the physical entity ..."
+    ::= { cpmCPUTotalEntry 2 }
+...
+```
+So the `cpmCPUTotalIndex` needs to be used to obtain the `cpmCPUTotalPhysicalIndex` for the related entry, and this one can be used to determine the human readable name of the hardware e.g. via `entPhysicalName` table. The generator configuration snippet to accomplish that would look like this:
+```
+      - source_indexes: [cpmCPUTotalIndex]
+        mprefix: [cpmCPU]
+        lookup: cpmCPUTotalPhysicalIndex|entPhysicalName
+```
+
+### rename: _newIndexName_
+Rename the label produced by the last component of the *lookup*._tableNameChain_ to _newIndexName_. Per default (i.e. if empty) it stays as is.
+
+### revalue:
+Change the value produced using the last component of the *lookup*._tableNameChain_. NOTE that if this option is used, a possibly "SNMP object not found" (e.g. if the entry for a given index doesn't exist anymore) results into an empty String to which the given regex gets applied.
+
+#### regex: _regexExpr_
+The regex to use. If it matches the final value, replace it with the expression of `value`. One may use capture-groups to keep/transfer certain parts to the value expression.
+
+#### value: _newValue_
+Replace the value of the related label with the given _newValue_ if _regexExpr_ matched the current value of the label. Capture-groups using `$num` are supported.
+
+Special: If _newValue_ results into `@drop@`, the metric gets dropped. So in contrast to *overrides*._metricName_.*ignore*.*true* it allows one to drop a metric not by its name but by its label value(s). E.g. if one has an Switch with a lot of transceiver on is usually not really interested in voltage/current/temperature, but retrieving the whole table is much faster than retrieving the single entries one is interested in, one may use this feature to get rid off it immediately and thus saves the prometheus client a lot of work and energy of course.
+
+A real world example showing such a case is:
+```
+    lookups: &entSensorValueTable_lookups
+      - source_indexes: [entPhysicalIndex]
+        mprefix: [entSensorValue]
+        lookup: entPhysicalName
+        rename: name
+        revalue:
+          regex: '.*Transceiver.*' # don't need Xcvr stats
+          value: '@drop@'
+        drop_source_indexes: true
+```
+which results only into 4 instead of 4\*4\*32+4=260 metrics:
+```
+snmp_entSensorValue{name="module-1 BACK"} 26
+snmp_entSensorValue{name="module-1 CPU"} 35
+snmp_entSensorValue{name="module-1 FRONT"} 21
+snmp_entSensorValue{name="module-1 TH"} 42
+snmp_entSensorValue{name="module-1 VRM-1"} 42
+```
+
+
+## overrides
+Allows to drop metrics, change its representation type (gauge, counter, etc.) or to replace a metric with a new one based on a regex which matches the value of the original metric.
+
+### _metricName_
+The name of the metric to which this override should be applied.
+
+#### type: _newType_
+Set the type used to convert the received SNMP value (collection of one or more bytes) to the metric value string to _newType_. By default it gets deduced from the SNMP object's SYNTAX within the MIB. Allowed types are:
+- *gauge*:  An integer with type gauge.
+- *counter*: An integer with type counter.
+- *OctetString*: A bit string, rendered as 0xff34.
+- *DateAndTime*: An RFC 2579 DateAndTime byte sequence. If the device has no time zone data, UTC is used.
+- *DisplayString*: An ASCII or UTF-8 string.
+- *PhysAddress48*: A 48 bit MAC address, rendered as 00:01:02:03:04:ff.
+- *Float*: A 32 bit floating-point value with type gauge.
+- *Double*: A 64 bit floating-point value with type gauge.
+- *InetAddressIPv4*: An IPv4 address, rendered as 1.2.3.4.
+- *InetAddressIPv6*: An IPv6 address, rendered as 0102:0304:0506:0708:090A:0B0C:0D0E:0F10.
+- *InetAddress*: An InetAddress per RFC 4001. Must be preceded by an InetAddressType.
+- *InetAddressMissingSize*: An InetAddress that violates section 4.1 of RFC 4001 by not having the size in the index. Must be preceded by an InetAddressType.
+- *EnumAsInfo*: An enum for which a single timeseries is created. Good for constant values.
+- *EnumAsStateSet*: An enum with a time series per state. Good for variable low-cardinality enums.
+- *Bits*: An RFC 2578 BITS construct, which produces a StateSet with a time series per bit.
+
+#### ignore: _boolVal_
+Drops the metric from the exporter's module config if set `true`. And of course: if no metric gets created, no lookups as well as no regex\_extracts have an impact on it. However, if needed, the required SNMP request will be made to obtain the required data, e.g. to resolve an index number of a table into its textual representation.
+
+#### regex\_extracts:
+Specifies how a new metric should be created. The generic format is:
+```
+MetricSuffix:
+  - regex: regexExpr
+    value: newValue
+  ...
+```
+A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the append _MetricSuffix_. If the _regexExpr_ matches the value of the metric gets set to the _newValue_ - capture-groups are supported as well. If the value can be parsed as a float64, a new metric gets create and evaluation for the current _MetricSuffix_ stops. Otherwise evaluation continues with then next regex/value pair (first match wins). If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ config have been processed, the original metric gets dropped.
+
+NOTE: Because regex\_extracts configs get applied only to metrics having its type set to *OctetString*, *DisplayString *, *PhysAddress48*, or *InetAddress*\*, one may need to set its type explicitly.
+
+Special: If the _MetricSuffix_ starts with a dot (`.`), the name of the generated metric is not `metricName + _MetricSuffix_` but `_MetricSuffix_` without the leading dot!
+
+
+# EnumAsInfo and EnumAsStateSet
+
+SNMP contains the concept of integer indexed enumerations (enums). There are two ways to represent these strings in Prometheus. They can be "info" metrics, or they can be "state sets". SNMP does not specify which should be used, and it's up to the use case of the data. Some users may also prefer the raw integer value, rather than the string. In order to set enum integer to string mapping, you must use one of the two overrides.
+
+*EnumAsInfo* instructs the exporter to convert the obtained metric value into its text counterpart, inject a new label into the metric having the same name as the metric itself. The labels value gets set to the text found, the metrics value gets set to 1. It should be used for properties that provide inventory-like data. For example a device type, the name of a colour etc. It is important that this value is constant. E.g.:
+```
+ifOperStatus{ifIndex="83886080"} 2
+# becomes
+ifOperStatus{ifIndex="83886080", ifOperStatus="down"} 1
+```
+
+*EnumAsStateSet* instructs the exporter to do the same as for `EnumAsInfo`, but in addition to create a metric for each possible enum value with the metric value set to `0` and the label value set to the enum text. E.g. because
+```
+# snmptranslate -Pu -Tp -IR ifOperStatus
++-- -R-- EnumVal   ifOperStatus(8)
+         Values: up(1), down(2), testing(3), unknown(4), dormant(5), notPresent(6), lowerLayerDown(7)
+```
+we would get seven instead of one metric for a single entry:
+```
+ifOperStatus{ifIndex="83886080"} 2
+# becomes
+ifOperStatus{ifIndex="83886080", ifOperStatus="down"} 1
+ifOperStatus{ifIndex="83886080", ifOperStatus="up"} 0
+ifOperStatus{ifIndex="83886080", ifOperStatus="testing"} 0
+ifOperStatus{ifIndex="83886080", ifOperStatus="unknown"} 0
+ifOperStatus{ifIndex="83886080", ifOperStatus="dormant"} 0
+ifOperStatus{ifIndex="83886080", ifOperStatus="notPresent"} 0
+ifOperStatus{ifIndex="83886080", ifOperStatus="lowerLayerDown"} 0
+```
+So *EnumAsStateSet* should be used for things that represent state or that you might want to alert on. For example the link state, is it up or down, is it in an error state, whether a panel is open or closed etc. Please be careful to not use this for high cardinality values as it will generate 1 time series per possible value.
+
+
+# Where to get MIBs
 
 Some of these are quite sluggish, so use wget to download.
 

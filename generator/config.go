@@ -59,4 +59,5 @@ type Lookup struct {
 	DropSourceIndexes bool     `yaml:"drop_source_indexes,omitempty"`
 	Rename            string   `yaml:"rename,omitempty"`
 	Revalue           config.RegexpExtract  `yaml:"revalue,omitempty"`
+	Mprefix           []string `yaml:"mprefix,omitempty"`
 }

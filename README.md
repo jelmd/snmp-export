@@ -1,88 +1,18 @@
 # Prometheus SNMP Exporter
 
-This is an exporter that exposes information gathered from SNMP
-for use by the Prometheus monitoring system.
+This repository is a fork of the [Prometheus SNMP Exporter](https://github.com/prometheus/snmp_exporter), an SNMP agent which exposes queried data in [Prometheuse exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/) per default using the endpoint URL http://_hostname:9116i_/snmp?target=_snmpServer_ (port and IP are customizable of course) and thus visualized e.g. using [Grafana](https://grafana.com/), [Netdata](https://www.netdata.cloud/), or [Zabbix](https://www.zabbix.com/).
 
-There are two components. An exporter that does the actual scraping, and a
-[generator](generator/) (which depends on NetSNMP) that creates the
-configuration for use by the exporter.
+The configuration for the exporter can be generated using the included
+[generator](generator/) (which depends on NetSNMP).
 
-## Installation
+For more details wrt. installation, how to build, possible prometheus client configuration, etc. see https://github.com/prometheus/snmp\_exporter .
 
-Binaries can be downloaded from the [Github
-releases](https://github.com/prometheus/snmp_exporter/releases) page.
+# Enhancements
+For now the main enhancements wrt. to the original repo alias upstream are:
+- better [documentation](generator/) of the generator file format and implications to the exporter.
+- allows a much more fine grained configuration of emitted metrics, its label names and label values.
+- better CLI support.
 
-## Usage
+It follows the main motto: Tackle the root cause of inefficiency (e.g. do not compose/emit data no one needs) instead of the symptoms (e.g. with prometheus client relabeling) and thus saving a lot of ressources and finally energy.
 
-```sh
-./snmp_exporter
-```
-
-Visit http://localhost:9116/snmp?target=1.2.3.4 where 1.2.3.4 is the IP of the
-SNMP device to get metrics from. You can also specify a `module` parameter, to
-choose which module to use from the config file. For production systems which
-pull permanently the exporter one should add the `compact` parameter to the URL.
-This tells the server to create a more compact output by ommitting all the
-optional and usually useless `# HELP` and `# TYPE` comments. This saves a lot
-of bandwith, ressources and thus energy! So a full production URL could be:
-http://localhost:9116/snmp?target=1.2.3.4&module=test&compact
-
-## Configuration
-
-The snmp exporter reads from a `snmp.yml` config file by default. This file is
-not intended to be written by hand, rather use the [generator](generator/) to
-generate it for you.
-
-The default `snmp.yml` covers a variety of common hardware for which
-MIBs are available to the public, walking them using SNMP v2 GETBULK.
-
-You'll need to use the generator in all but the simplest of setups. It is
-needed to customize which objects are walked, use non-public MIBs or specify
-authentication parameters.
-
-## Prometheus Configuration
-
-The snmp exporter needs to be passed the address as a parameter, this can be
-done with relabelling.
-
-Example config:
-```YAML
-scrape_configs:
-  - job_name: 'snmp'
-    static_configs:
-      - targets:
-        - 192.168.1.2  # SNMP device.
-    metrics_path: /snmp
-    params:
-      module: [if_mib]
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: __param_target
-      - source_labels: [__param_target]
-        target_label: instance
-      - target_label: __address__
-        replacement: 127.0.0.1:9116  # The SNMP exporter's real hostname:port.
-```
-
-This setup allows Prometheus to provide scheduling and service discovery, as
-unlike all other exporters running an exporter on the machine from which we are
-getting the metrics from is not possible.
-
-### TLS and basic authentication
-
-The SNMP Exporter supports TLS and basic authentication. This enables better
-control of the various HTTP endpoints.
-
-To use TLS and/or basic authentication, you need to pass a configuration file
-using the `--web.config.file` parameter. The format of the file is described
-[in the exporter-toolkit repository](https://github.com/prometheus/exporter-toolkit/blob/master/docs/web-configuration.md).
-
-Note that the TLS and basic authentication settings affect all HTTP endpoints:
-/metrics for scraping, /snmp for scraping SNMP devices, and the web UI.
-
-## Large counter value handling
-
-In order to provide accurate counters for large Counter64 values, the exporter will automatically
-wrap the value every 2^53 to avoid 64-bit float rounding.
-
-To disable this feature, use the command line flag `--no-snmp.wrap-large-counters`.
+To get an impression how far more or less interested people can get, have a look at the [generator file](generator/generator.cisco.yml) we use to produce our production exporter configuration file (snippet) wrt. our Cisco equipment.

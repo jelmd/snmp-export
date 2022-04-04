@@ -318,6 +318,8 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		return metrics[i].Oid < metrics[j].Oid
 	})
 
+	cfg.Prefix = sanitizeLabelName(cfg.Prefix)
+
 	// Find all the usable metrics.
 	for _, metricNode := range metrics {
 		walkNode(metricNode, func(n *Node) {
@@ -330,6 +332,10 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				return // Inaccessible metrics.
 			}
 
+			if cfg.Overrides[n.Label].Ignore {
+				return // Ignored metric.
+			}
+
 			metric := &config.Metric{
 				Name:       sanitizeMetricName(n.Label, cfg.Prefix),
 				Oid:        n.Oid,
@@ -338,10 +344,6 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				Indexes:    []*config.Index{},
 				Lookups:    []*config.Lookup{},
 				EnumValues: n.EnumValues,
-			}
-
-			if cfg.Overrides[n.Label].Ignore {
-				return // Ignored metric.
 			}
 
 			prevType := ""
@@ -380,12 +382,34 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		})
 	}
 
+
 	// Apply lookups.
+
+	// first normalize possible metric prefixes
+	for _, lookup := range cfg.Lookups {
+		for n, mname := range lookup.Mprefix {
+			lookup.Mprefix[n] = sanitizeMetricName(strings.TrimSpace(mname), cfg.Prefix)
+		}
+	}
+
+	// now apply to relevant metrics
 	for _, metric := range out.Metrics {
 		toDelete := []string{}
         s := ""
 		lookupSeen := map[string]int{}
 		for _, lookup := range cfg.Lookups {
+			if len(lookup.Mprefix) > 0 {
+				found := false
+				for _, mname := range lookup.Mprefix {
+					if strings.HasPrefix(metric.Name, mname) || strings.HasPrefix(metric.Oid, mname) {
+						found = true
+						break
+					}
+				}
+				if ! found {
+					continue
+				}
+			}
 			foundIndexes := 0
 			// See if all source indexes are defined for the target.
 			// metric.Indexes are the indexes found in the MIB definition of
@@ -406,8 +430,8 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			if foundIndexes != len(lookup.SourceIndexes) || foundIndexes == 0 {
 				if len(s) > 0 {
 					m := metric.Name
-					if len( cfg.Prefix) > 0 {
-						m = strings.TrimPrefix(m, cfg.Prefix + "_")
+					if len(cfg.Prefix) > 0 {
+						m = metric.Name[len(cfg.Prefix)+1:]
 					}
 					level.Debug(logger).Log("msg", "Skipping lookup", "module", mname, "metric", m, "not defined in MIB", s[2:])
 				}
@@ -509,9 +533,22 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	}
 
 	// Apply module config overrides to their corresponding metrics.
-	for name, params := range cfg.Overrides {
+	for mname, params := range cfg.Overrides {
+		s := sanitizeMetricName(mname, cfg.Prefix)
+		for suffix, regexpair := range params.RegexpExtracts {
+			var t string
+			if suffix[0] == '.' {
+				t = "." + sanitizeMetricName(suffix[1:], cfg.Prefix)
+			} else {
+				t = sanitizeLabelName(suffix)
+			}
+			if t != suffix {
+				delete(params.RegexpExtracts, suffix)
+				params.RegexpExtracts[t] = regexpair
+			}
+		}
 		for _, metric := range out.Metrics {
-			if name == metric.Name || name == metric.Oid {
+			if s == metric.Name || s == sanitizeMetricName(metric.Oid, cfg.Prefix) {
 				metric.RegexpExtracts = params.RegexpExtracts
 			}
 		}
@@ -549,6 +586,7 @@ var (
 func sanitizeMetricName(name string, prefix string) string {
 	s := strings.TrimSpace(prefix)
 	if len(s) > 0 {
+		s = invalidLabelCharRE.ReplaceAllString(s, "_")
 		return s + "_" + strings.TrimPrefix(invalidLabelCharRE.ReplaceAllString(name, "_"), s)
 	}
 	return invalidLabelCharRE.ReplaceAllString(name, "_")
