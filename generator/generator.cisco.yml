@@ -1,0 +1,506 @@
+# This is a configuration file for the
+# https://github.com/jelmd/snmp_exporter/tree/main/generator
+# (C) 2022 by Jens Elkner (jel+snmpex@cs.uni-magdeburg.de)
+
+# To translate it into a YAML spec conforming file, you need to pass it through
+# https://github.com/jelmd/snakeyaml - this is a modified YAML file parser,
+# which allows duplicated keys and in turn does what most normal people would
+# do: merge its contents into a single basket and throw away the now redundant
+# basket. 
+
+# The usual workflows used to create and test it were:
+ 
+# export MIBDIRS=${HOME}/adm/snmp/mibs/cisco:${HOME}/adm/snmp/mibs/cisco/capa
+# DST=mySNMPdeviceIP
+#
+# snmpbulkwalk -v 2c -c public -Pu -OX $DST mib-2 >/tmp/mib2.out
+# snmpbulkwalk -v 2c -c public -Pu -OX $DST private >/tmp/priv.out
+# snmptable    -v 2c -c public -Pu -OX $DST ifTable >/tmp/iftbl.out
+# snmptranslate -Tp -IR -Pu ifTable >/tmp/iftbltree.out
+# ...
+
+# Create/edit generator.cisco.yml using the output in /tmp/*.out etc. and check:
+
+# snakeyaml generator.cisco.yml > /tmp/a
+# snmp-export-cfg generate -f /tmp/a -o /tmp/c
+# snmp-export -f /tmp/c
+#
+# curl -s "http://localhost:9116/snmp?compact&module=ifTables&target=$DST"
+# curl -s "http://localhost:9116/snmp?compact&module=cisco_35xx&target=$DST"
+# curl -s "http://localhost:9116/snmp?compact&module=cisco_n3k&target=$DST"
+
+modules:
+  global_vars:
+    prefix: &prefix snmp
+
+  ifTable_template: # generic
+    walk: &ifTable_walk
+      - ifOperStatus			# 1.3.6.1.2.1.2.2.1.8
+      - ifInDiscards			# 1.3.6.1.2.1.2.2.1.13
+      - ifInErrors				# 1.3.6.1.2.1.2.2.1.14
+      - ifInUnknownProtos		# 1.3.6.1.2.1.2.2.1.15
+      - ifOutDiscards			# 1.3.6.1.2.1.2.2.1.19
+      - ifOutErrors				# 1.3.6.1.2.1.2.2.1.20
+
+      - udpInDatagrams			# 1.3.6.1.2.1.7.1
+      - udpOutDatagrams			# 1.3.6.1.2.1.7.4
+      - snmpInPkts				# 1.3.6.1.2.1.11.1
+      - snmpOutPkts				# 1.3.6.1.2.1.11.2
+
+    overrides: &ifTable_overrides
+      ifIndex:
+        ignore: true
+      ifDescr:
+        ignore: true
+      ifType:
+        ignore: true
+      ifMtu:
+        ignore: true
+      ifPhysAddress:
+        ignore: true
+      ifAdminStatus:
+        ignore: true
+      ifLastChange:
+        ignore: true
+      ifOutQLen:
+        ignore: true
+      ifSpecific:
+        ignore: true
+      # use 64-bit variants from ifXTable instead
+      ifSpeed:
+        ignore: true
+      ifInOctets:
+        ignore: true
+      ifInUcastPkts:
+        ignore: true
+      ifInNUcastPkts:
+        ignore: true
+      ifOutOctets:
+        ignore: true
+      ifOutUcastPkts:
+        ignore: true
+      ifOutNUcastPkts:
+        ignore: true
+
+
+  ifXTable_template: # generic
+    walk: &ifXTable_walk
+      - ifHCInOctets			# 1.3.6.1.2.1.31.1.1.1.6
+      - ifHCInUcastPkts			# 1.3.6.1.2.1.31.1.1.1.7
+      - ifHCInMulticastPkts		# 1.3.6.1.2.1.31.1.1.1.8
+      - ifHCInBroadcastPkts		# 1.3.6.1.2.1.31.1.1.1.9
+      - ifHCOutOctets			# 1.3.6.1.2.1.31.1.1.1.10
+      - ifHCOutUcastPkts		# 1.3.6.1.2.1.31.1.1.1.11
+      - ifHCOutMulticastPkts	# 1.3.6.1.2.1.31.1.1.1.12
+      - ifHCOutBroadcastPkts	# 1.3.6.1.2.1.31.1.1.1.13
+      - ifHighSpeed				# 1.3.6.1.2.1.31.1.1.1.15
+
+    overrides: &ifXTable_overrides
+      ifAlias:
+        ignore: true			# redundant/useless
+      ifConnectorPresent:
+        ignore: true
+      ifCounterDiscontinuityTime:
+        ignore: true
+      ifInBroadcastPkts:
+        ignore: true			# use ifHCInBroadcastPkts
+      ifInMulticastPkts:
+        ignore: true			# use ifHCInMulticastPkts
+      ifLinkUpDownTrapEnable:
+        ignore: true
+      ifName:
+        ignore: true			# included as labels
+      ifOutBroadcastPkts:
+        ignore: true			# use ifHCOutBroadcastPkts
+      ifOutMulticastPkts:
+        ignore: true			# use ifHCOutMulticastPkts
+      ifPromiscuousMode:
+        ignore: true
+
+    lookups: &ifTable_lookups
+      - source_indexes: [ifIndex]
+        lookup: 1.3.6.1.2.1.31.1.1.1.1 # ifName
+        drop_source_indexes: true
+
+
+  cpmCPUTotalTable_template: # C35xx, N3K
+    walk: &cpmCPUTotalTable_walk
+      - cpmCPUTotal1minRev			# 1.3.6.1.4.1.9.9.109.1.1.1.1.7
+      - cpmCPUTotal5minRev			# 1.3.6.1.4.1.9.9.109.1.1.1.1.8
+      - cpmCPUTotal5secRev			# 1.3.6.1.4.1.9.9.109.1.1.1.1.6
+      - cpmCPUMemoryUsed			# 1.3.6.1.4.1.9.9.109.1.1.1.1.12
+      - cpmCPUMemoryFree			# 1.3.6.1.4.1.9.9.109.1.1.1.1.13
+
+    overrides: &cpmCPUTotalTable_overrides
+      cpmCPUMonInterval:
+        ignore: true			# constant = 5s
+      cpmCPUTotalMonIntervalValue:
+        ignore: true			# same as cpmCPUTotal5secRev
+      cpmCPUInterruptMonIntervalValue:
+        ignore: true			# cpu utilzation is sufficient or now.
+      cpmCPUTotal1min:
+        ignore: true			# same as cpmCPUTotal1minRev
+      cpmCPUTotal5min:
+        ignore: true			# same as cpmCPUTotal5minRev
+      cpmCPUTotal5sec:
+        ignore: true			# same as cpmCPUTotal5secRev
+      cpmCPUTotalPhysicalIndex:
+        ignore: true			# use to resolve entPhysicalName, only.
+
+    lookups: &cpmCPUTotalTable_lookups
+      - source_indexes: [cpmCPUTotalIndex]
+        mprefix: [cpmCPU]
+        lookup: cpmCPUTotalPhysicalIndex|entPhysicalName
+        rename: cpu
+        revalue:
+          regex: '([^ ]+).*'
+          value: '$1'
+        drop_source_indexes: true
+
+
+  ciscoMemoryPoolTable_template: # 35xx, !N3K
+    walk: &ciscoMemoryPoolTable_walk
+      - ciscoMemoryPoolUsed
+      - ciscoMemoryPoolFree
+      - ciscoMemoryPoolLargestFree
+
+    overrides: &ciscoMemoryPoolTable_overrides
+      ciscoMemoryPoolName:
+        ignore: true
+      ciscoMemoryPoolAlternate: # useless
+        ignore: true
+      ciscoMemoryPoolType:
+        ignore: true
+      ciscoMemoryPoolValid:
+        ignore: true
+
+    lookups: &ciscoMemoryPoolTable_lookups
+      - source_indexes: [ciscoMemoryPoolType]
+        lookup: ciscoMemoryPoolName
+        rename: pool
+        drop_source_indexes: true
+
+
+  cempMemPoolTable_template: # !35xx, N3K
+    walk: &cempMemPoolTable_walk
+      - cempMemPoolHCUsed
+      - cempMemPoolHCFree
+      - cempMemPoolHCLargestFree
+      - cempMemPoolHCLowestFree
+      - cempMemPoolHCUsedLowWaterMark
+      - cempMemPoolHCShared
+
+    overrides: &cempMemPoolTable_overrides
+      # ignore 32-bit values and use 64-bit aka HC values, only.
+      cempMemPoolFree:
+        ignore: true
+      cempMemPoolFreeOvrflw:
+        ignore: true
+      cempMemPoolLargestFree:
+        ignore: true
+      cempMemPoolLargestFreeOvrflw:
+        ignore: true
+      cempMemPoolLowestFree:
+        ignore: true
+      cempMemPoolLowestFreeOvrflw:
+        ignore: true
+      cempMemPoolShared:
+        ignore: true
+      cempMemPoolSharedOvrflw:
+        ignore: true
+      cempMemPoolUsedLowWaterMark:
+        ignore: true
+      cempMemPoolUsedLowWaterMarkOvrflw:
+        ignore: true
+      cempMemPoolUsed:
+        ignore: true
+      cempMemPoolUsedOvrflw:
+        ignore: true
+      # useless or redundant stuff
+      cempMemPoolPlatformMemory:
+        ignore: true
+      cempMemPoolAlternate:
+        ignore: true
+      cempMemPoolValid:
+        ignore: true
+      cempMemPoolAllocHit:
+        ignore: true
+      cempMemPoolAllocMiss:
+        ignore: true
+      cempMemPoolFreeHit:
+        ignore: true
+      cempMemPoolFreeMiss:
+        ignore: true
+      cempMemPoolType:
+        ignore: true
+      entPhysicalIndex:
+        ignore: true
+      cempMemPoolName:
+        ignore: true
+
+    lookups: &cempMemPoolTable_lookups
+      - source_indexes: [cempMemPoolIndex, entPhysicalIndex]
+        mprefix: [cempMemPoolHC]
+        # actually cempMemPoolName.entPhysicalIndex.cempMemPoolIndex but this
+        # is not yet supported. Since this is always the same, we hardcode it
+        # to a 35xx compatible value using a cheap index/lookup
+        lookup: cempMemPoolName
+        rename: pool
+        revalue:
+          regex: '.*'
+          value: 'Processor'
+        drop_source_indexes: true
+#      expensive, especially on more recent cisco Switches
+#     - source_indexes: [entPhysicalIndex]
+#       lookup: entPhysicalName
+#       rename: pool
+#       revalue:
+#         regex: '([^ ]+).*'
+#         value: '$1'
+#       drop_source_indexes: true
+
+
+# ciscoEnvMonVoltageStatusTable_template: # 35xx, !N3K
+#   useless bloat
+#   walk:
+#     - ciscoEnvMonVoltageStatusTable
+
+
+  ciscoEnvMonTemperatureStatusTable_template: # 35xx, !N3K
+    walk: &ciscoEnvMonTemperatureStatusTable_walk
+      - ciscoEnvMonTemperatureStatusValue
+      - ciscoEnvMonTemperatureThreshold
+
+    overrides: &ciscoEnvMonTemperatureStatusTable_overrides
+      ciscoEnvMonTemperatureLastShutdown:
+        ignore: true
+      ciscoEnvMonTemperatureStatusDescr:
+        ignore: true
+      ciscoEnvMonTemperatureStatusValueRev1:
+        ignore: true
+      ciscoEnvMonTemperatureState:
+        ignore: true
+
+    lookups: &ciscoEnvMonTemperatureStatusTable_lookups
+      - source_indexes: [ciscoEnvMonTemperatureStatusIndex]
+        lookup: ciscoEnvMonTemperatureStatusDescr
+        rename: sensor
+        revalue:
+          regex: 'S[^0-9]*([0-9]+), S[^0-9]*([0-9]+).*'
+          value: '$1.$2'
+        drop_source_indexes: true
+
+
+  ciscoEnvMonFanStatusTable_template: # 35xx, !N3K
+    walk: &ciscoEnvMonFanStatusTable_walk
+      - ciscoEnvMonFanState
+
+    overrides: &ciscoEnvMonFanStatusTable_overrides
+      ciscoEnvMonFanStatusDescr:
+        ignore: true
+
+    # unknown(1), up(2), down(3), warning(4)
+    lookups: &ciscoEnvMonFanStatusTable_lookups
+      - source_indexes: [ciscoEnvMonFanStatusIndex]
+        lookup: ciscoEnvMonFanStatusDescr
+        rename: fan
+        revalue:
+          regex: 'Switch#([0-9]+), Fan#([0-9]+).*'
+          value: '$1.$2'
+        drop_source_indexes: true
+
+
+  cefcFanTrayStatusTable_template: # !35xx, N3K
+    walk: &cefcFanTrayStatusTable_walk
+      - cefcFanTrayOperStatus
+
+    lookups: &cefcFanTrayStatusTable_lookups
+      - source_indexes: [entPhysicalIndex]
+        mprefix: [cefcFanTrayOperStatus]
+        lookup: entPhysicalName
+        rename: fan
+        revalue:
+          regex: 'Fan[^0-9]*([0-9]+)'
+          value: '$1'
+        drop_source_indexes: true
+
+
+  ciscoEnvMonSupplyStatusTable_template: # 35xx, !N3K
+    walk: &ciscoEnvMonSupplyStatusTable_walk
+      - ciscoEnvMonSupplyState
+
+    overrides: &ciscoEnvMonSupplyStatusTable_overrides
+      ciscoEnvMonSupplyStatusDescr:
+        ignore: true 
+      ciscoEnvMonSupplySource:
+        ignore: true
+
+    lookups: &ciscoEnvMonSupplyStatusTable_lookups
+      - source_indexes: [ciscoEnvMonSupplyStatusIndex]
+        lookup: ciscoEnvMonSupplyStatusDescr
+        rename: psu
+        revalue:
+          regex: 'S[^0-9]*([0-9]+), P[^0-9]*([0-9]+).*'
+          value: '$1.$2'
+        drop_source_indexes: true
+
+
+# cefcFRUPowerSupplyGroupTable_template: !35xx, N3K
+#	values which do not make any sense wrt. real measured values. Junk!
+#   walk:
+#     - cefcFRUPowerSupplyGroupTable.*
+
+
+  entSensorValueTable_template: # !35xx, N3K
+    walk: &entSensorValueTable_walk
+      - entSensorValue
+
+    overrides: &entSensorValueTable_overrides
+      entSensorPrecision:
+        ignore: true	# always 0
+      entSensorValueUpdateRate:
+        ignore: true	# Transceiver: 180s, Other: 60s
+      entSensorScale:
+        ignore: true	# Transceiver: Bias Current [mA],
+                        #   Receive|Transmit Power [dBm/mW],
+                        #   Temperature [mC], Voltage [mV]
+                        # Other: °C
+      entSensorType:
+        ignore: true	# see above
+      entSensorStatus:
+        ignore: true	# 1 for all shown entries
+      entSensorValueTimeStamp:
+        ignore: true	# in 100 Hz since boot - same value for all entries
+
+    lookups: &entSensorValueTable_lookups
+      - source_indexes: [entPhysicalIndex]
+        mprefix: [entSensorValue]
+        lookup: entPhysicalName
+        rename: name
+        revalue:
+          regex: '.*Transceiver.*' # don't need Xcvr stats
+          value: '@drop@'
+        drop_source_indexes: true
+      #- source_indexes: [entPhysicalIndex]
+      #  lookup: entSensorScale
+      #  rename: scale
+      #  drop_source_indexes: true
+      #- source_indexes: [entPhysicalIndex]
+      #  lookup: entSensorType
+      #  rename: type
+      #  drop_source_indexes: true
+
+
+  ifTables:
+    prefix: *prefix
+    max_repetitions: 50
+
+    walk: *ifTable_walk
+    walk: *ifXTable_walk
+    walk:
+      - _dummy
+    lookups: *ifTable_lookups
+
+
+  cisco_35xx: # ### C35xx , !C3232C
+    prefix: *prefix
+    max_repetitions: 50
+
+    walk:
+      - cpmCPUTotalTable
+    overrides:
+      <<: *cpmCPUTotalTable_overrides
+    lookups: *cpmCPUTotalTable_lookups
+
+    walk:
+      - ciscoMemoryPoolTable
+    overrides:
+      <<: *ciscoMemoryPoolTable_overrides
+    lookups: *ciscoMemoryPoolTable_lookups
+    
+    walk:
+      - ciscoEnvMonTemperatureStatusTable
+    overrides:
+      <<: *ciscoEnvMonTemperatureStatusTable_overrides
+    lookups: *ciscoEnvMonTemperatureStatusTable_lookups
+
+    walk:
+      - ciscoEnvMonFanStatusTable
+    overrides:
+      <<: *ciscoEnvMonFanStatusTable_overrides
+    lookups: *ciscoEnvMonFanStatusTable_lookups
+
+    walk:
+      - ciscoEnvMonSupplyStatusTable
+    overrides:
+      <<: *ciscoEnvMonSupplyStatusTable_overrides
+    lookups: *ciscoEnvMonSupplyStatusTable_lookups
+
+    walk:
+      - chassisModel			# 1.3.6.1.4.1.9.5.1.2.16
+    # make snakeyaml happy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+
+
+  cisco_n3k: # ### C3232C, !C35xx
+    prefix: *prefix
+    max_repetitions: 50
+
+    # N3K has no 'chassisModel', so we need to lookit up via entPhysicalClass
+    walk:
+      - entPhysicalClass
+    lookups:
+      - source_indexes: [entPhysicalIndex]
+        lookup: entPhysicalName
+        rename: snmp_chassisModel # keep in sync with *prefix
+        mprefix: [entPhysicalClass]
+        drop_source_indexes: true
+    overrides:
+      entPhysicalClass:
+        type: DisplayString # actually it is an Integer
+        regex_extracts:
+          .chassisModel:
+            - regex: 3	# see  snmptranslate -Pu -Tp -IR entPhysicalClass
+              value: 1
+
+    walk:
+      - cpmCPUTotalTable
+    overrides:
+      <<: *cpmCPUTotalTable_overrides
+    lookups: *cpmCPUTotalTable_lookups
+
+    walk:
+      - cempMemPoolTable
+    overrides:
+      <<: *cempMemPoolTable_overrides
+    lookups: *cempMemPoolTable_lookups
+
+    walk:
+      - cefcFanTrayOperStatus
+    lookups: *cefcFanTrayStatusTable_lookups
+
+    walk: *entSensorValueTable_walk
+    lookups: *entSensorValueTable_lookups
+
+    # make snakeyaml happy
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+
+
+  test:
+    prefix: *prefix
+    max_repetitions: 50
+
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+    overrides:
+      _dummy:
+        ignore: true
