@@ -49,6 +49,9 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 
 	outputConfig := config.Config{}
 	for name, m := range cfg.Modules {
+		if (m == nil) {
+			continue
+		}
 		level.Info(logger).Log("msg", "Generating config for module", "module", name)
 		// Give each module a copy of the tree so that it can be modified.
 		mNodes := nodes.Copy()
