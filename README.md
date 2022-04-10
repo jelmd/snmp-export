@@ -1,11 +1,13 @@
 # Prometheus SNMP Exporter
 
-This repository is a fork of the [Prometheus SNMP Exporter](https://github.com/prometheus/snmp_exporter), an SNMP agent which exposes queried data in [Prometheuse exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/) per default using the endpoint URL http://_hostname:9116i_/snmp?target=_snmpServer_ (port and IP are customizable of course) and thus visualized e.g. using [Grafana](https://grafana.com/), [Netdata](https://www.netdata.cloud/), or [Zabbix](https://www.zabbix.com/).
+This repository is a fork of the [Prometheus SNMP Exporter](https://github.com/prometheus/snmp_exporter), an SNMP agent which exposes queried data in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/) per default using the endpoint URL http://_hostname:9116i_/snmp?target=_snmpServer_ (port and IP are customizable of course) and thus visualized e.g. using [Grafana](https://grafana.com/), [Netdata](https://www.netdata.cloud/), or [Zabbix](https://www.zabbix.com/).
 
 The configuration for the exporter can be generated using the included
-[generator](generator/) (which depends on NetSNMP).
+[generator](generator/) (which depends on NetSNMP). It solves a lot of
+configuration problems in advance, and allows the exporter to work efficiently
+and independently of any SNMP libraries and tools.
 
-For more details wrt. installation, how to build, possible prometheus client configuration, etc. see https://github.com/prometheus/snmp\_exporter .
+For more details wrt. installation, how to build, possible prometheus client configuration, etc. see https://github.com/prometheus/snmp_exporter .
 
 # Enhancements
 For now the main enhancements wrt. to the original repo alias upstream is the suport of:
