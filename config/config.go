@@ -198,6 +198,7 @@ type Index struct {
 	FixedSize  int            `yaml:"fixed_size,omitempty"`
 	Implied    bool           `yaml:"implied,omitempty"`
 	EnumValues map[int]string `yaml:"enum_values,omitempty"`
+	Oid        string         `yaml:"oid,omitempty"`
 }
 
 type Lookup struct {
@@ -206,6 +207,7 @@ type Lookup struct {
 	Labelvalue  RegexpExtract	`yaml:"labelvalue,omitempty"`
 	Oid       []string   `yaml:"oid,omitempty"`
 	Type      []string   `yaml:"type,omitempty"`
+	Inject    bool     `yaml:"inject,omitempty"`
 }
 
 // Secret is a string that must not be revealed on marshaling.

@@ -8,10 +8,15 @@ The configuration for the exporter can be generated using the included
 For more details wrt. installation, how to build, possible prometheus client configuration, etc. see https://github.com/prometheus/snmp\_exporter .
 
 # Enhancements
-For now the main enhancements wrt. to the original repo alias upstream are:
+For now the main enhancements wrt. to the original repo alias upstream is the suport of:
 - better [documentation](generator/) of the generator file format and implications to the exporter.
-- allows a much more fine grained configuration of emitted metrics, its label names and label values.
-- better CLI support.
+- a much more fine grained configuration of emitted metrics, its label names and label values
+- dropping a metric based on regex match of its label value(s)
+- replacing the metric name based on its value regex match
+- dropping labels based on label value regex match
+- injection of non-index based labels and related PDU values
+- automatic removal of leading and trailing whitespaces from PDU values
+- CLI output file option.
 
 It follows the main motto: Tackle the root cause of inefficiency (e.g. do not compose/emit data no one needs) instead of the symptoms (e.g. with prometheus client relabeling) and thus saving a lot of ressources and finally energy.
 

@@ -427,7 +427,9 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 					s += ", " + lookupIndex
 				}
 			}
-			if foundIndexes != len(lookup.SourceIndexes) || foundIndexes == 0 {
+			l := &config.Lookup{ Labelvalue: lookup.Revalue }
+			l.Inject = len(lookup.SourceIndexes) == 0
+			if (! l.Inject) && (foundIndexes != len(lookup.SourceIndexes) || foundIndexes == 0) {
 				if len(s) > 0 {
 					m := metric.Name
 					if len(cfg.Prefix) > 0 {
@@ -438,16 +440,44 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				continue
 			}
 
+			oid_name := strings.Split(lookup.Lookup, "|")
+			last := len(oid_name) - 1
+			if l.Inject {
+				for  c, label := range oid_name {
+					// add as pseudo index so that we get subOids as needed
+					idxNode, ok := nameToNode[label]
+					if !ok {
+						return nil, fmt.Errorf("Could not find pseudo index '%s' for %s::%s", label, mname, metric.Name)
+					}
+					idx := &config.Index{Labelname: label}
+					idx.Type, ok = metricType(idxNode.Type)
+					if !ok {
+						return nil, fmt.Errorf("No type info found for pseudo index '%s' for %s::%s", label, mname, metric.Name)
+					}
+					idx.Oid = idxNode.Oid
+					idx.FixedSize = idxNode.FixedSize
+					idx.Implied = idxNode.ImpliedIndex
+					idx.EnumValues = idxNode.EnumValues
+					metric.Indexes = append(metric.Indexes, idx)
+					if (c < last) {
+						if len(tableInstances[metric.Oid]) > 0 {
+							for _, idx := range tableInstances[metric.Oid] {
+								needToWalk[idxNode.Oid + idx + "."] = struct{}{}
+							}
+						} else {
+							needToWalk[idxNode.Oid] = struct{}{}
+						}
+					}
+				}
+			}
+
 			// applies to the final value of the lookup
-			l := &config.Lookup{ Labelvalue: lookup.Revalue }
 			for _, oldIndex := range lookup.SourceIndexes {
 				l.Labels = append(l.Labels, sanitizeLabelName(oldIndex))
 			}
 
 			// chain of index names to lookup with the value of the prev. index
 			var indexNode *Node
-			oid_name := strings.Split(lookup.Lookup, "|")
-			last := len(oid_name) - 1
 			for  c, label := range oid_name {
 				var ok bool
 				indexNode, ok = nameToNode[label]
@@ -461,11 +491,13 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				l.Type = append(l.Type, typ)
 				l.Oid = append(l.Oid, indexNode.Oid)
 				if (c < last) {
-					if typ != "gauge" {
-						// for indexed lookups we need numbers
-						return nil, fmt.Errorf("Type of index %s in index chain '%s' is not 'gauge' (module: %s)", label, lookup.Lookup, mname)
+					if ! l.Inject {
+						if typ != "gauge" {
+							// for indexed lookups we need numbers
+							return nil, fmt.Errorf("Type of index %s in index chain '%s' is not 'gauge' (module: %s)", label, lookup.Lookup, mname)
+						}
+						needToWalk[indexNode.Oid] = struct{}{}
 					}
-					needToWalk[indexNode.Oid] = struct{}{}
 					l.Labelname = append(l.Labelname, sanitizeLabelName(indexNode.Label))
 				}
 			}
@@ -537,7 +569,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		s := sanitizeMetricName(mname, cfg.Prefix)
 		for suffix, regexpair := range params.RegexpExtracts {
 			var t string
-			if suffix[0] == '.' {
+			if len(suffix) > 0 && suffix[0] == '.' {
 				t = "." + sanitizeMetricName(suffix[1:], cfg.Prefix)
 			} else {
 				t = sanitizeLabelName(suffix)

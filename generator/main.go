@@ -50,6 +50,7 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 	outputConfig := config.Config{}
 	for name, m := range cfg.Modules {
 		if (m == nil) {
+			level.Info(logger).Log("msg", "Skipping empty module config", "module", name)
 			continue
 		}
 		level.Info(logger).Log("msg", "Generating config for module", "module", name)

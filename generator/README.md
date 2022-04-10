@@ -78,9 +78,9 @@ modules:
         ignore: boolVal                    #     Default: false
         type: newType                      #     Default: "" (i.e. keep type as is)
         regex_extracts:                    #     Optional with one or more:
-          newSuffix:                       #       Default: "" with one or more:
+          newSuffix:                       #       Default: "" (Special: leading `.`) with one or more:
             -  regex: regexExpr            #         Default: '.*'
-               value: newValue             #         Default: '$1'
+               value: newValue             #         Default: '$1'. Special value: `@drop@` .. drop metric on match.
             ...
 ```
 
@@ -226,10 +226,26 @@ If the SNMP v3 target device has 1+ context defined, use _ctxName_ to access it.
 
 
 ## lookups
-Optional list of lookups to perform to mangle label names or values (deduced from index names) or even to drop a metric based on the final value of a label. Lookups get applied in same order they appear in the config file, before any overrides get applied.
+Optional list of lookups to perform to mangle label names or values (deduced from index names) or even to drop a metric based on the final value of a label. Lookups get applied in same order they appear in the config file, before any overrides get applied. Note that leading and trailing whitespaces get removed automagically from label values, so one does not need to create extra rules to accomplish this.
 
 ### source\_indexes: _list_
-The metric selector to which the lookup gets applied. Only if the related SNMP object (table) definition in the MIB contains *all* indexes named in the given _list_ the lookup gets applied to the metric (deduced from the walked objects).
+The metric selector to which the lookup gets applied. Only if the related SNMP object (table) definition in the MIB contains *all* indexes named in the given _list_ the lookup gets applied to the metric (deduced from the walked objects). If more than one index is given, the index values of all indexes get append to the lookup label's OID and thus form the OID to lookup. E.g.:
+```
+      - source_indexes: [cmcIIIVarDeviceIndex, cmcIIIVarIndex]
+        lookup: cmcIIIVarName
+        rename: name
+```
+The OID of `cmcIIIVarName` is `1.3.6.1.4.1.2606.7.4.2.2.1.3` and if the value of the `cmcIIIVarDeviceIndex` is `123` and the value of `cmcIIIVarIndex` is `345` the would lookup `1.3.6.1.4.1.2606.7.4.2.2.1.3.123.345` to get the value for the label `cmcIIIVarName`, which gets finally renamed to `name`.
+
+If `source_indexes` contains an empty list, and a lookup value is given, the lookup result gets inserted into the related metric as a new label. The label name is the same as the lookup name, the label value the lookup result. If the lookup value is a chain (i.e. it contains `|`), the value gets split into a list of lookup values, which finally get all inserted as labels into the metric. However, a possible `rename` and/or `revalue` option gets applied to the last lookup within the list, only. So if one needs to mangle all, one should configure a single lookup for each label. E.g.:
+```
+      - source_indexes: []
+        mprefix: [cmcTcUnit1Status]
+        lookup: cmcTcUnit1Text
+        rename: name
+```
+This would create a metric like `cmcTcUnit1Status{name="RLCP"} 1` and without the lookup `cmcTcUnit1Status 1`.
+
 
 ### mprefix: _list_
 An option to further narrow down, to which metrics this lookup definition gets applied. Only if a metric's name or OID starts with a string in the given _list_ the lookup gets applied to it. This gets handy if several objects use the same index, e.g. `entPhysicalIndex`, but depending on the name of the metric you wanna lookup its textual representation in the `shortNameTable` or `longNameTable`, or look it up in the `entPhysicalName` but rename the label to `fan` or `sensor` depending the name of the metric. The source\_indexes option would be to coarse for it, would produce different labels with the same value.
@@ -278,6 +294,7 @@ So the `cpmCPUTotalIndex` needs to be used to obtain the `cpmCPUTotalPhysicalInd
         mprefix: [cpmCPU]
         lookup: cpmCPUTotalPhysicalIndex|entPhysicalName
 ```
+NOTE: A lookup may overwrite any label already inserted. So if one has more than a single lookup, take care of its order.
 
 ### rename: _newIndexName_
 Rename the label produced by the last component of the *lookup*._tableNameChain_ to _newIndexName_. Per default (i.e. if empty) it stays as is.
@@ -345,16 +362,33 @@ Drops the metric from the exporter's module config if set `true`. And of course:
 #### regex\_extracts:
 Specifies how a new metric should be created. The generic format is:
 ```
-MetricSuffix:
+MetricSuffix:           # Special: leading `.`
   - regex: regexExpr
-    value: newValue
+    value: newValue     # Special: `@drop@`
   ...
 ```
-A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the append _MetricSuffix_. If the _regexExpr_ matches the value of the metric gets set to the _newValue_ - capture-groups are supported as well. If the value can be parsed as a float64, a new metric gets create and evaluation for the current _MetricSuffix_ stops. Otherwise evaluation continues with then next regex/value pair (first match wins). If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ config have been processed, the original metric gets dropped.
+A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the append _MetricSuffix_. If the _regexExpr_ matches the value of the metric gets set to the _newValue_ - capture-groups are supported as well. If the value can be parsed as a float64, a new metric gets create and evaluation for the current _MetricSuffix_ stops. Otherwise evaluation continues with then next regex/value pair (first match wins). If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped.
+
 
 NOTE: Because regex\_extracts configs get applied only to metrics having its type set to *OctetString*, *DisplayString *, *PhysAddress48*, or *InetAddress*\*, one may need to set its type explicitly.
 
-Special: If the _MetricSuffix_ starts with a dot (`.`), the name of the generated metric is not `metricName + _MetricSuffix_` but `_MetricSuffix_` without the leading dot!
+Specials:
+
+If the _MetricSuffix_ starts with a dot (`.`), the name of generated metrics is not `metricName + _MetricSuffix_` but `_MetricSuffix_` without the leading dot!
+
+If the _newValue_ results into `@drop@`, the original metric gets dropped and no new metric, no matter, whther previous regex pairs had a match. So to drop e.g. only metrics having a value of `0`, one may use:
+```
+unit1SensorSetHigh:
+  type: 'DisplayString'
+  regex_extracts:
+    '':
+      - regex: '0'
+        value: '@drop@'
+      - regex: '.*'
+        value: '$1'
+```
+The 2nd regex pair is important, otherwise no match would happen for values != 0 and thus no new metric created (and the original gets dropped as usual).
+
 
 
 # EnumAsInfo and EnumAsStateSet
