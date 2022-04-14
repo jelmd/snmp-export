@@ -427,7 +427,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 					s += ", " + lookupIndex
 				}
 			}
-			l := &config.Lookup{ Labelvalue: lookup.Revalue }
+			l := &config.Lookup{ Labelvalue: lookup.Revalue, Remap: lookup.Remap }
 			l.Inject = len(lookup.SourceIndexes) == 0
 			if (! l.Inject) && (foundIndexes != len(lookup.SourceIndexes) || foundIndexes == 0) {
 				if len(s) > 0 {
@@ -582,6 +582,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		for _, metric := range out.Metrics {
 			if s == metric.Name || s == sanitizeMetricName(metric.Oid, cfg.Prefix) {
 				metric.RegexpExtracts = params.RegexpExtracts
+				metric.Remap = params.Remap
 			}
 		}
 	}

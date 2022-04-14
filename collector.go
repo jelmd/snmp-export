@@ -364,6 +364,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		labelvalues = append(labelvalues, v)
 	}
 
+	needRemap := len(metric.Remap) != 0
 	switch metric.Type {
 	case "counter":
 		t = prometheus.CounterValue
@@ -411,19 +412,53 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		}
 
 		if len(metric.RegexpExtracts) > 0 {
-			return applyRegexExtracts(metric, pduValueAsString(pdu, metricType), labelnames, labelvalues, logger, compact)
+			return applyRegexExtracts(metric, strings.TrimSpace(pduValueAsString(pdu, metricType)), labelnames, labelvalues, logger, compact)
 		}
-		// For strings we put the value as a label with the same name as the metric.
-		// If the name is already an index, we do not need to set it again.
-		if _, ok := labels[metric.Name]; !ok {
+		s := strings.TrimSpace(pduValueAsString(pdu, metricType))
+		// Put in the value as a label with the same name as the metric.
+		addLabel := true
+		if needRemap {
+			v , x := metric.Remap[s]
+			if x {
+				if v == "@drop@" {
+					return []prometheus.Metric{}
+				}
+				s = v
+				f, err := strconv.ParseFloat(v, 64)
+				if err == nil {
+					value = f
+					addLabel = false
+				}
+			}
+		}
+		needRemap = false
+		if addLabel {
+			// unlikely that it is already there
 			labelnames = append(labelnames, metric.Name)
-			labelvalues = append(labelvalues, strings.TrimSpace(pduValueAsString(pdu, metricType)))
+			labelvalues = append(labelvalues, s)
 		}
 	}
 
 	help := ""
 	if ! compact {
 		help = metric.Help
+	}
+	if needRemap {
+		v, ok := metric.Remap[strconv.FormatFloat(value, 'f', -1, 64)]
+		if ok {
+			if v == "@drop@" {
+				return []prometheus.Metric{}
+			}
+			f, err := strconv.ParseFloat(v, 64)
+			if err == nil {
+				value = f
+			} else {
+				// unlikely that it is already there
+				labelnames = append(labelnames, metric.Name)
+				labelvalues = append(labelvalues, v)
+				// value = 1.0	// not resetting it allows more flexebility
+			}
+		}
 	}
 	sample, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, help, labelnames, nil),
 		t, value, labelvalues...)
@@ -456,14 +491,23 @@ func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labe
 				continue
 			}
 			res := strMetric.Regex.ExpandString([]byte{}, strMetric.Value, pduValue, indexes)
-			if string(res) == "@drop@" {
+			s := string(res)
+			u := string(res)
+			t, ok := metric.Remap[s]
+			if ok {
+				s = t
+			}
+			if s == "@drop@" {
 				level.Debug(logger).Log("msg", "Dropping metric", "metric", metric.Name, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
 				return []prometheus.Metric{}
 			}
-			v, err := strconv.ParseFloat(string(res), 64)
+			v, err := strconv.ParseFloat(s, 64)
 			if err != nil {
+fmt.Printf("Match is no float. orig=%s  expanded=%s  remapped=%s  final=%s  err=%v\n", pduValue, u, t, s, err)
 				level.Debug(logger).Log("msg", "Error parsing float64 from value", "metric", metric.Name, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
-				continue
+				labelnames = append(labelnames, metric.Name)
+				labelvalues = append(labelvalues, s)
+				v = 1.0
 			}
 			newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(newName, help, labelnames, nil),
 				prometheus.GaugeValue, v, labelvalues...)
@@ -483,6 +527,13 @@ func enumAsInfo(metric *config.Metric, value int, labelnames, labelvalues []stri
 	state, ok := metric.EnumValues[int(value)]
 	if !ok {
 		state = strconv.Itoa(int(value))
+	}
+	t, ok := metric.Remap[state]
+	if ok {
+		if t == "@drop@" {
+			return []prometheus.Metric{}
+		}
+		state = t
 	}
 	labelnames = append(labelnames, metric.Name)
 	labelvalues = append(labelvalues, state)
@@ -509,6 +560,13 @@ func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []
 		// Fallback to using the value.
 		state = strconv.Itoa(value)
 	}
+	t, ok := metric.Remap[state]
+	if ok {
+		if t == "@drop@" {
+			return []prometheus.Metric{}
+		}
+		state = t
+	}
 	help := ""
 	if ! compact {
 		help = metric.Help + " (EnumAsStateSet)"
@@ -524,6 +582,13 @@ func enumAsStateSet(metric *config.Metric, value int, labelnames, labelvalues []
 	for k, v := range metric.EnumValues {
 		if k == value {
 			continue
+		}
+		t, ok := metric.Remap[v]
+		if ok {
+			if t == "@drop@" {
+				continue
+			}
+			v = t
 		}
 		newMetric, err := prometheus.NewConstMetric(prometheus.NewDesc(metric.Name, help, labelnames, nil),
 			prometheus.GaugeValue, 0.0, append(labelvalues, v)...)
@@ -765,7 +830,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 		}
 		last := len(lookup.Oid) - 1
 		for c, oid := range lookup.Oid {
-			s := oid
+			s := oid	// just save for debug statement below
 			if lookup.Inject {
 				oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[lookup.Oid[c]]))
 			} else if c == 0 {
@@ -785,7 +850,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 				}
 
 				if len(lookup.Labelvalue.Value) > 0 && c == last {
-					s := idxCache[oid]
+					s = idxCache[oid]
 					if len(s) == 0 {
 						if ok {
 							s = strings.TrimSpace(pduValueAsString(&pdu, typ))
@@ -801,14 +866,25 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 					}
 					if s == "@drop@" {
 						labels["@drop@"] = "drop"
+						return labels
 					}
-					labels[lookup.Labelname[c]] = s
 				} else if ok {
 					// pretty cheap, so we do not cache
-					labels[lookup.Labelname[c]] = strings.TrimSpace(pduValueAsString(&pdu, typ))
+					s = strings.TrimSpace(pduValueAsString(&pdu, typ))
 				} else {
-					labels[lookup.Labelname[c]] = ""
+					s = ""
 				}
+				if lookup.Remap != nil {
+					v, x := lookup.Remap[s]
+					if x {
+						if v == "@drop@" {
+							labels["@drop@"] = "drop"
+							return labels
+						}
+						s = v
+					}
+				}
+				labels[lookup.Labelname[c]] = s
 				if ok {
 					a := []int{int(gosnmp.ToBigInt(pdu.Value).Int64())}
 					labelSubOids[lookup.Labelname[c]] = a

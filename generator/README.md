@@ -72,6 +72,9 @@ modules:
         revalue:                           #   Optional.
           regex: regexExpr                 #     Default: '.*'
           value: newValue                  #     Default: "" (i.e. keep value as is). Special value: `@drop@` .. drop metric on match.
+        remap:                             #   Optional with one or more:
+          key: val
+          ...
 
     overrides:                             # Optional with one or more:
       metricName:                          #   Mandatory.
@@ -82,6 +85,9 @@ modules:
             -  regex: regexExpr            #         Default: '.*'
                value: newValue             #         Default: '$1'. Special value: `@drop@` .. drop metric on match.
             ...
+        remap:                             #     Optional with one or more:
+          key: val
+          ...
 ```
 
 The `generator.yml` example provides a coarse grained list of modules which might be useful to get in touch with the exporter and can be used as a starting point for a more fine grained configuration, which meets your needs and saves a lot of energy.
@@ -331,6 +337,8 @@ snmp_entSensorValue{name="module-1 TH"} 42
 snmp_entSensorValue{name="module-1 VRM-1"} 42
 ```
 
+### remap
+This is an optional map, which allows one to replace label values. The final label value (i.e. after optional revalue settings got applied) is the key for the map. If the map contains it, the label value gets replaced by the value of the related map entry. Otherwise it stays at is. This might be more efficient than applying a list of regex to each metric value several times. However, take care to not run into `* collected metric ... was collected before with the same name and label values` by mapping several values to the same result which eventually make the metric non-unique anymore (and therefore the error).
 
 ## overrides
 Allows to drop metrics, change its representation type (gauge, counter, etc.) or to replace a metric with a new one based on a regex which matches the value of the original metric.
@@ -367,16 +375,20 @@ MetricSuffix:           # Special: leading `.`
     value: newValue     # Special: `@drop@`
   ...
 ```
-A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the append _MetricSuffix_. If the _regexExpr_ matches the value of the metric gets set to the _newValue_ - capture-groups are supported as well. If the value can be parsed as a float64, a new metric gets create and evaluation for the current _MetricSuffix_ stops. Otherwise evaluation continues with then next regex/value pair (first match wins). If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped.
+A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the evaluated regex - capture-groups are supported. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0` and returned.
+
+So first match always wins and stops regex evaluation!
+
+If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped.
 
 
-NOTE: Because regex\_extracts configs get applied only to metrics having its type set to *OctetString*, *DisplayString *, *PhysAddress48*, or *InetAddress*\*, one may need to set its type explicitly.
+NOTE: Because regex\_extracts configs get applied only to metrics having its type set to *OctetString*, *DisplayString *, *PhysAddress48*, or *InetAddress*\*, one may need to set its type explicitly. In contrast to the upstream version, a zero length result string does not cause a metric to be dropped anymore (use `@drop@` instead - see below).
 
 Specials:
 
 If the _MetricSuffix_ starts with a dot (`.`), the name of generated metrics is not `metricName + _MetricSuffix_` but `_MetricSuffix_` without the leading dot!
 
-If the _newValue_ results into `@drop@`, the original metric gets dropped and no new metric, no matter, whther previous regex pairs had a match. So to drop e.g. only metrics having a value of `0`, one may use:
+If the _newValue_ results into `@drop@`, the original metric gets dropped and no new metric, no matter, whether previous regex pairs had a match. So to drop e.g. only metrics having a value of `0`, one may use:
 ```
 unit1SensorSetHigh:
   type: 'DisplayString'
@@ -389,6 +401,8 @@ unit1SensorSetHigh:
 ```
 The 2nd regex pair is important, otherwise no match would happen for values != 0 and thus no new metric created (and the original gets dropped as usual).
 
+#### remap
+This optional setting allows one to replace a metric's value using a map (instead of a bunch of regex pairs). After the optional regex\_extracts got applied, the value gets converted into its string representation and used as key for the lookup within the map. On match the value of the entry found becomes the metric's value. However, for `counter`, `gauge`, `Float`, `Double`, `DateAndTime` and `EnumAs*` a new value gets parsed as Float64 first - only if convertion succeeds, the new value will be set (otherwise the metric value is kept as is). If the result of a map lookup is `@drop@` the related metric gets dropped. For `Bits` no remapping gets applied (create an issue on [github](https://github.com/jelmd/snmp_exporter/issues), if you really need it).
 
 
 # EnumAsInfo and EnumAsStateSet

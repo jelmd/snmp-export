@@ -28,6 +28,7 @@ type MetricOverrides struct {
 	Ignore         bool                              `yaml:"ignore,omitempty"`
 	RegexpExtracts map[string][]config.RegexpExtract `yaml:"regex_extracts,omitempty"`
 	Type           string                            `yaml:"type,omitempty"`
+	Remap          map[string]string                 `yaml:"remap,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -60,4 +61,5 @@ type Lookup struct {
 	Rename            string   `yaml:"rename,omitempty"`
 	Revalue           config.RegexpExtract  `yaml:"revalue,omitempty"`
 	Mprefix           []string `yaml:"mprefix,omitempty"`
+	Remap             map[string]string `yaml:"remap,omitempty"`
 }

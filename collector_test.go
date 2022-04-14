@@ -79,7 +79,7 @@ func TestPduToSample(t *testing.T) {
 							Regex: config.Regexp{
 								regexp.MustCompile(".*"),
 							},
-							Value: "",
+							Value: "@drop@",
 						},
 					},
 				},
@@ -517,7 +517,7 @@ func TestPduToSample(t *testing.T) {
 	}
 
 	idxCache := map[string]string{}
-	for _, c := range cases {
+	for n, c := range cases {
 		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, idxCache, log.NewNopLogger(), false)
 		metric := &io_prometheus_client.Metric{}
 		expected := map[string]struct{}{}
@@ -532,21 +532,21 @@ func TestPduToSample(t *testing.T) {
 					errHappened = true
 					continue
 				} else {
-					t.Fatalf("Error writing metric: %v", err)
+					t.Fatalf("Error writing metric (case %d): %v", n, err)
 				}
 			}
 			got := m.Desc().String() + " " + metric.String()
 			if _, ok := expected[got]; !ok {
-				t.Errorf("Unexpected metric: got %v", got)
+				t.Errorf("Unexpected metric (case %d): got %v", n, got)
 			} else {
 				delete(expected, got)
 			}
 		}
 		for e := range expected {
-			t.Errorf("Expected metric %v, but was not returned.", e)
+			t.Errorf("Expected metric %v, but was not returned (case %d).", e,n)
 		}
 		if !errHappened && c.shouldErr {
-			t.Fatalf("Was expecting error, but none returned.")
+			t.Fatalf("Was expecting error, but none returned (case %d).", n)
 		}
 	}
 }

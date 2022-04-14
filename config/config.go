@@ -190,6 +190,7 @@ type Metric struct {
 	Lookups        []*Lookup                  `yaml:"lookups,omitempty"`
 	RegexpExtracts map[string][]RegexpExtract `yaml:"regex_extracts,omitempty"`
 	EnumValues     map[int]string             `yaml:"enum_values,omitempty"`
+	Remap          map[string]string          `yaml:"remap,omitempty"`
 }
 
 type Index struct {
@@ -208,6 +209,7 @@ type Lookup struct {
 	Oid       []string   `yaml:"oid,omitempty"`
 	Type      []string   `yaml:"type,omitempty"`
 	Inject    bool     `yaml:"inject,omitempty"`
+	Remap     map[string]string  `yaml:"remap,omitempty"`
 }
 
 // Secret is a string that must not be revealed on marshaling.
