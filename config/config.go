@@ -247,6 +247,7 @@ type Auth struct {
 }
 
 type RegexpExtract struct {
+	SubOids       Regexp `yaml:"sub_oids,omitempty"`
 	Value string `yaml:"value"`
 	Regex Regexp `yaml:"regex"`
 }

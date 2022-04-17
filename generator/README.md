@@ -71,7 +71,8 @@ modules:
         rename: newIndexName               #   Default: "" (i.e. do not rename)
         revalue:                           #   Optional.
           regex: regexExpr                 #     Default: '.*'
-          value: newValue                  #     Default: "" (i.e. keep value as is). Special value: `@drop@` .. drop metric on match.
+          value: newValue                  #     Default: '$1'. Special value: `@drop@` .. drop metric on match.
+          sub_oids: regexExpr              #     optional subOid filter.
         remap:                             #   Optional with one or more:
           key: val
           ...
@@ -84,6 +85,7 @@ modules:
           newSuffix:                       #       Default: "" (Special: leading `.`) with one or more:
             -  regex: regexExpr            #         Default: '.*'
                value: newValue             #         Default: '$1'. Special value: `@drop@` .. drop metric on match.
+               sub_oids: regexExpr         #         optional subOid filter.
             ...
         remap:                             #     Optional with one or more:
           key: val
@@ -337,6 +339,14 @@ snmp_entSensorValue{name="module-1 TH"} 42
 snmp_entSensorValue{name="module-1 VRM-1"} 42
 ```
 
+#### sub\_oids: _regexExpr_
+If the specified _regexExpr_ does not match the related metric instance' subOid, the regex/value pair evaluation gets skipped and handled as 'no match'.
+
+Wrt. the example above: if one retrieves the `entSensorValueTable` it contains the entries for `entSensorValue` (`1.3.6.1.4.1.9.9.91.1.1.1.1.4`), which results per default into a metric named `entSensorValue`, but many metric instances, because there are usually more than one. Those instances refer to the OID `1.3.6.1.4.1.9.9.91.1.1.1.1.4.`*${entPhysicalIndex}*, where the trailing part is the subOid (by default it gets injected as label named `entPhysicalIndex` having the value of the index). Usually it is a single number, however, in some rare cases wher the mib entry has defined more than one index, it can be more, e.g. `22.1`. So if one wants to drop the metrics for `Transceivers` having an entPhysicalIndex of 300054573..300054579 only, one could add `sub_oids: 30005457[3-9]` to the `revalue` entry.
+
+NOTE: Usually (e.g. for enumerated hardware) indexes are stable, do not change.
+However, for others like process lists they are definitely unstable. So make sure, that you have understood, what your SNMP server is doing, before using `sub_oids`.
+
 ### remap
 This is an optional map, which allows one to replace label values. The final label value (i.e. after optional revalue settings got applied) is the key for the map. If the map contains it, the label value gets replaced by the value of the related map entry. Otherwise it stays at is. This might be more efficient than applying a list of regex to each metric value several times. However, take care to not run into `* collected metric ... was collected before with the same name and label values` by mapping several values to the same result which eventually make the metric non-unique anymore (and therefore the error).
 
@@ -370,9 +380,10 @@ Drops the metric from the exporter's module config if set `true`. And of course:
 #### regex\_extracts:
 Specifies how a new metric should be created. The generic format is:
 ```
-MetricSuffix:           # Special: leading `.`
+MetricSuffix:             # Special: leading `.`
   - regex: regexExpr
-    value: newValue     # Special: `@drop@`
+    value: newValue       # Special: `@drop@`
+    sub_oids: regexExpr   # optional subOid filter.
   ...
 ```
 A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the evaluated regex - capture-groups are supported. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0`.
@@ -381,6 +392,7 @@ So first match always wins and stops regex evaluation!
 
 If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped.
 
+If a `sub_oids` regex is given, it behaves like described in the lookup section: if it matches the subOid of the related metric, it gets applied as usual, otherwise it gets not applied and the result is set to "no match".
 
 NOTE: Because regex\_extracts configs get **not applied** to metrics having its type set to *EnumAsInfo*, *EnumAsStateSet*, or *Bits*, one may need to set its type explicitly to somthing else, e.g. *DisplayString*.
 

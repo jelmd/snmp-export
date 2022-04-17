@@ -44,6 +44,7 @@ var (
 	// 64-bit float mantissa: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 	float64Mantissa uint64 = 9007199254740992
 	wrapCounters           = kingpin.Flag("snmp.wrap-large-counters", "Wrap 64-bit counters to avoid floating point rounding.").Default("true").Bool()
+	nullRegexp config.Regexp		// for the golang null bullshit bingo
 )
 
 func init() {
@@ -350,8 +351,8 @@ func parseDateAndTime(pdu *gosnmp.SnmpPDU) (float64, error) {
 func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger, compact bool) []prometheus.Metric {
 	var err error
 	// The part of the OID that is the indexes.
-	labels := indexesToLabels(indexOids, metric, oidToPdu, idxCache, logger)
-
+	labels, subOid := indexesToLabels(indexOids, metric, oidToPdu, idxCache, logger)
+fmt.Printf("%s %s %s\n", metric.Name, metric.Oid, subOid)
 	_, ok := labels["@drop@"]
 	if ok {
 		return []prometheus.Metric{}
@@ -416,7 +417,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		}
 
 		if hasRegex {
-			return applyRegexExtracts(metric, strings.TrimSpace(pduValueAsString(pdu, metricType)), labelnames, labelvalues, logger, compact)
+			return applyRegexExtracts(metric, subOid, strings.TrimSpace(pduValueAsString(pdu, metricType)), labelnames, labelvalues, logger, compact)
 		}
 		s := strings.TrimSpace(pduValueAsString(pdu, metricType))
 		// Put in the value as a label with the same name as the metric.
@@ -448,7 +449,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		help = metric.Help
 	}
     if hasRegex {
-		return applyRegexExtracts(metric, strconv.FormatFloat(value, 'f', -1, 64), labelnames, labelvalues, logger, compact)
+		return applyRegexExtracts(metric, subOid, strconv.FormatFloat(value, 'f', -1, 64), labelnames, labelvalues, logger, compact)
 	}
 	if needRemap {
 		v, ok := metric.Remap[strconv.FormatFloat(value, 'f', -1, 64)]
@@ -477,7 +478,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	return []prometheus.Metric{sample}
 }
 
-func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labelvalues []string, logger log.Logger, compact bool) []prometheus.Metric {
+func applyRegexExtracts(metric *config.Metric, subOids string, pduValue string, labelnames, labelvalues []string, logger log.Logger, compact bool) []prometheus.Metric {
 	results := []prometheus.Metric{}
 	help := ""
 	if ! compact {
@@ -492,6 +493,12 @@ func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labe
 			newName = metric.Name + name
 		}
 		for _, strMetric := range strMetricSlice {
+			if strMetric.SubOids != nullRegexp {
+				idx := strMetric.SubOids.FindStringIndex(subOids)
+				if idx == nil {
+					continue
+				}
+			}
 			indexes := strMetric.Regex.FindStringSubmatchIndex(pduValue)
 			if indexes == nil {
 				level.Debug(logger).Log("msg", "No match found for regexp", "metric", metric.Name, "value", pduValue, "regex", strMetric.Regex.String())
@@ -802,9 +809,10 @@ func indexOidsAsString(indexOids []int, typ string, fixedSize int, implied bool,
 	}
 }
 
-func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) map[string]string {
+func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) (map[string]string, string) {
 	labels := map[string]string{}
 	labelSubOids := map[string][]int{}
+	var subOids string
 
 	// Prepare index info for the source indexes to lookup
 	for _, index := range metric.Indexes {
@@ -824,8 +832,14 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 		} else {
 			labelSubOids[index.Oid] = subOid
 		}
+		if len(str) > 0 {
+			subOids += "." + str
+		}
 		// remaining subOids to lookup
 		indexOids = tail
+	}
+	if len(subOids) != 0 {
+		subOids = subOids[1:]
 	}
 
 	// Perform lookups.
@@ -836,6 +850,15 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 				delete(labels, label)
 			}
 			continue
+		}
+		applyRevalue := true
+		if len(lookup.Labelvalue.Value) > 0 {
+			if lookup.Labelvalue.SubOids != nullRegexp {
+				idx := lookup.Labelvalue.SubOids.FindStringIndex(subOids)
+				applyRevalue =  idx != nil
+			}
+		} else {
+			applyRevalue = false
 		}
 		last := len(lookup.Oid) - 1
 		for c, oid := range lookup.Oid {
@@ -852,7 +875,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 			}
 			level.Debug(logger).Log("BaseOid", s, "label", lookup.Labelname[c], "lookupOid", oid)
 			pdu, ok := oidToPdu[oid]
-			if ok || (len(lookup.Labelvalue.Value) > 0) || lookup.Remap != nil {
+			if ok || applyRevalue || lookup.Remap != nil {
 				var typ  string
 				if len(lookup.Type) > 0 {
 					typ = lookup.Type[c]
@@ -863,8 +886,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 					s = strings.TrimSpace(pduValueAsString(&pdu, typ))
 					idxCache[oid] = s
 				}
-				if len(lookup.Labelvalue.Value) > 0 && c == last {
-
+				if applyRevalue && c == last {
 					var t string
 					indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
 					if indexes != nil {
@@ -874,7 +896,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 					level.Debug(logger).Log("metric", metric.Name, "idx", lookup.Labelname[c], "old", t, "new", s)
 					if s == "@drop@" {
 						labels["@drop@"] = "drop"
-						return labels
+						return labels , subOids
 					}
 				}
 				if lookup.Remap != nil {
@@ -882,7 +904,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 					if x {
 						if v == "@drop@" {
 							labels["@drop@"] = "drop"
-							return labels
+							return labels, subOids
 						}
 						s = v
 					}
@@ -901,5 +923,5 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 		}
 	}
 
-	return labels
+	return labels, subOids
 }

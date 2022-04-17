@@ -1005,7 +1005,7 @@ func TestIndexesToLabels(t *testing.T) {
 	l := log.NewNopLogger()
 	for n, c := range cases {
 		idxCache := map[string]string{}
-		got := indexesToLabels(c.oid, &c.metric, c.oidToPdu, idxCache, l)
+		got, _ := indexesToLabels(c.oid, &c.metric, c.oidToPdu, idxCache, l)
 		if !reflect.DeepEqual(got, c.result) {
 			t.Errorf("%d indexesToLabels(%v, %#v, %#v): got %v, want %v", n, c.oid, c.metric, c.oidToPdu, got, c.result)
 		}
