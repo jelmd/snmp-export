@@ -17,8 +17,11 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - replacing the metric name based on its value regex match
 - dropping labels based on label value regex match
 - remapping metric as well as label values
-- override regex\_extracts regex expansion results do not need to result into a float anymore, i.e. consistent behavior as without an override (label insertion for non-float values and metric value = 1.0).
+- non-numeric override regex\_extracts results, i.e. consistent behavior as without an override: for non-float values insert a label=value pair and set metric value = 1.0.
+- counter, gauge, Float, DateAndTime in override regex\_extracts (value gets converted to its decimal string representation first). So no need to force its type to e.g. DisplayString anymore, which would in turn cause its value to be set to 1.0.
 - injection of non-index based labels and related PDU values
+- chaining of index lookups even for indexes not being defined for the processed metric/table.
+- identity lookups (i.e. where the lookup name is the same as the source\_index name) do not pull in the related index table from the SNMP target anymore (instead it gets generated on the-fly).
 - automatic removal of leading and trailing whitespaces from PDU values
 - CLI output file option.
 

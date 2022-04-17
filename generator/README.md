@@ -375,14 +375,16 @@ MetricSuffix:           # Special: leading `.`
     value: newValue     # Special: `@drop@`
   ...
 ```
-A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the evaluated regex - capture-groups are supported. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0` and returned.
+A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the evaluated regex - capture-groups are supported. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0`.
 
 So first match always wins and stops regex evaluation!
 
 If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped.
 
 
-NOTE: Because regex\_extracts configs get applied only to metrics having its type set to *OctetString*, *DisplayString *, *PhysAddress48*, or *InetAddress*\*, one may need to set its type explicitly. In contrast to the upstream version, a zero length result string does not cause a metric to be dropped anymore (use `@drop@` instead - see below).
+NOTE: Because regex\_extracts configs get **not applied** to metrics having its type set to *EnumAsInfo*, *EnumAsStateSet*, or *Bits*, one may need to set its type explicitly to somthing else, e.g. *DisplayString*.
+
+NOTE: In contrast to the upstream version, a zero length result string does not cause a metric to be dropped anymore (use `@drop@` instead - see below).
 
 Specials:
 

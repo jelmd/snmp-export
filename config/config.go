@@ -1,4 +1,7 @@
 // Copyright 2018 The Prometheus Authors
+// Portions Copyright 2022 Jens Elkner (jel+snmp-exporter@cs.uni-magdeburg.de)
+// All rights reserved.
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -200,6 +203,7 @@ type Index struct {
 	Implied    bool           `yaml:"implied,omitempty"`
 	EnumValues map[int]string `yaml:"enum_values,omitempty"`
 	Oid        string         `yaml:"oid,omitempty"`
+	IsNative   bool           `yaml:"native,omitempty"`
 }
 
 type Lookup struct {
@@ -275,7 +279,10 @@ func (re *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&s); err != nil {
 		return err
 	}
-	regex, err := regexp.Compile("^(?:" + s + ")$")
+	if len(s) > 0 && s[0] != '^' && s[len(s)-1] != '$' {
+		s = "^(?:" + s + ")$"
+	}
+	regex, err := regexp.Compile(s)
 	if err != nil {
 		return err
 	}

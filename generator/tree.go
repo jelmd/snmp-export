@@ -1,4 +1,7 @@
 // Copyright 2018 The Prometheus Authors
+// Portions Copyright 2022 Jens Elkner (jel+snmp-exporter@cs.uni-magdeburg.de)
+// All rights reserved.
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -349,7 +352,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			prevType := ""
 			// "copy" Indexes from the MIB node into the metric node
 			for count, i := range n.Indexes {
-				index := &config.Index{Labelname: i}
+				index := &config.Index{Labelname: i, IsNative: true}
 				indexNode, ok := nameToNode[i]
 				if !ok {
 					level.Warn(logger).Log("msg", "Could not find index for node", "module", mname, "node", n.Label, "index", i)
@@ -365,6 +368,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 					index.Implied = true
 				}
 				index.EnumValues = indexNode.EnumValues
+				index.Oid = indexNode.Oid
 
 				// Convert (InetAddressType,InetAddress) to (InetAddress)
 				if subtype, ok := combinedTypes[index.Type]; ok {
@@ -479,6 +483,9 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			// chain of index names to lookup with the value of the prev. index
 			var indexNode *Node
 			for  c, label := range oid_name {
+				if label == "_dummy" {
+					continue
+				}
 				var ok bool
 				indexNode, ok = nameToNode[label]
 				if !ok {
@@ -501,22 +508,36 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 					l.Labelname = append(l.Labelname, sanitizeLabelName(indexNode.Label))
 				}
 			}
-			// the labelname, which should be finally used in the constructed
-			// metric instead of the indexes labels
-			l.Labelname = append(l.Labelname, renameLabel(indexNode.Label, lookup.Rename))
+			if indexNode != nil {
+				// labelname, which should be finally used in the constructed
+				// metric instead of the indexes labels
+				l.Labelname = append(l.Labelname, renameLabel(indexNode.Label, lookup.Rename))
 
-			// Make sure we walk the lookup OID(s).
-			if len(tableInstances[metric.Oid]) > 0 {
-				for _, index := range tableInstances[metric.Oid] {
-					needToWalk[indexNode.Oid+index+"."] = struct{}{}
+				// Make sure we walk the lookup OID(s) unless it is a native Idx
+				// for identity Lookups
+				pullIn := true
+				for _, oldIndex := range lookup.SourceIndexes {
+					if oldIndex == indexNode.Label {
+						pullIn = false
+						break
+					}
 				}
-			} else {
-				needToWalk[indexNode.Oid] = struct{}{}
+				if pullIn {
+					if len(tableInstances[metric.Oid]) > 0 {
+						for _, index := range tableInstances[metric.Oid] {
+							needToWalk[indexNode.Oid+index+"."] = struct{}{}
+						}
+					} else {
+						needToWalk[indexNode.Oid] = struct{}{}
+					}
+				}
 			}
 			h := getLookupHash(l);
 			_, ok := lookupSeen[h]
 			if ! ok {
-				metric.Lookups = append(metric.Lookups, l)
+				if len(l.Oid) != 0 {
+					metric.Lookups = append(metric.Lookups, l)
+				}
 				lookupSeen[h] = 1
 				if lookup.DropSourceIndexes {
 					// the labels to drop from the final label map

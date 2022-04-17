@@ -1,4 +1,7 @@
 // Copyright 2018 The Prometheus Authors
+// Portions Copyright 2022 Jens Elkner (jel+snmp-exporter@cs.uni-magdeburg.de)
+// All rights reserved.
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -365,6 +368,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	}
 
 	needRemap := len(metric.Remap) != 0
+	hasRegex := len(metric.RegexpExtracts) != 0
 	switch metric.Type {
 	case "counter":
 		t = prometheus.CounterValue
@@ -411,7 +415,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 			}
 		}
 
-		if len(metric.RegexpExtracts) > 0 {
+		if hasRegex {
 			return applyRegexExtracts(metric, strings.TrimSpace(pduValueAsString(pdu, metricType)), labelnames, labelvalues, logger, compact)
 		}
 		s := strings.TrimSpace(pduValueAsString(pdu, metricType))
@@ -442,6 +446,9 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	help := ""
 	if ! compact {
 		help = metric.Help
+	}
+    if hasRegex {
+		return applyRegexExtracts(metric, strconv.FormatFloat(value, 'f', -1, 64), labelnames, labelvalues, logger, compact)
 	}
 	if needRemap {
 		v, ok := metric.Remap[strconv.FormatFloat(value, 'f', -1, 64)]
@@ -492,7 +499,6 @@ func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labe
 			}
 			res := strMetric.Regex.ExpandString([]byte{}, strMetric.Value, pduValue, indexes)
 			s := string(res)
-			u := string(res)
 			t, ok := metric.Remap[s]
 			if ok {
 				s = t
@@ -503,7 +509,6 @@ func applyRegexExtracts(metric *config.Metric, pduValue string, labelnames, labe
 			}
 			v, err := strconv.ParseFloat(s, 64)
 			if err != nil {
-fmt.Printf("Match is no float. orig=%s  expanded=%s  remapped=%s  final=%s  err=%v\n", pduValue, u, t, s, err)
 				level.Debug(logger).Log("msg", "Error parsing float64 from value", "metric", metric.Name, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
 				labelnames = append(labelnames, metric.Name)
 				labelvalues = append(labelvalues, s)
@@ -808,10 +813,14 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 		// The text form of the subOid to lookup. Here it is the table row
 		// [index] to lookup. Usually nameToOid[index.Labelname] + "." + str
 		// would be the real OID one would need to lookup.
-		if len(index.Oid) == 0 {
+		if index.IsNative {
 			labels[index.Labelname] = str
-			// The subOid as int[], usually a single row number.
 			labelSubOids[index.Labelname] = subOid
+			// this allows us to not fetch the index2index table
+			if len(subOid) == 1 {
+				n := strconv.Itoa(subOid[0])
+				idxCache[index.Oid + "." + n] = n
+			}
 		} else {
 			labelSubOids[index.Oid] = subOid
 		}
@@ -834,8 +843,8 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 			if lookup.Inject {
 				oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[lookup.Oid[c]]))
 			} else if c == 0 {
+				// in the first round, lookup the [multi] index
 				for _, label := range lookup.Labels {
-					// multi lookup index
 					oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[label]))
 				}
 			} else {
@@ -843,36 +852,30 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 			}
 			level.Debug(logger).Log("BaseOid", s, "label", lookup.Labelname[c], "lookupOid", oid)
 			pdu, ok := oidToPdu[oid]
-			if ok || (len(lookup.Labelvalue.Value) > 0) {
+			if ok || (len(lookup.Labelvalue.Value) > 0) || lookup.Remap != nil {
 				var typ  string
 				if len(lookup.Type) > 0 {
 					typ = lookup.Type[c]
 				}
 
+				s = idxCache[oid]
+				if len(s) == 0  && ok {
+					s = strings.TrimSpace(pduValueAsString(&pdu, typ))
+					idxCache[oid] = s
+				}
 				if len(lookup.Labelvalue.Value) > 0 && c == last {
-					s = idxCache[oid]
-					if len(s) == 0 {
-						if ok {
-							s = strings.TrimSpace(pduValueAsString(&pdu, typ))
-						}
-						var t string
-						indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
-						if indexes != nil {
-							t = s
-							s = string(lookup.Labelvalue.Regex.ExpandString([]byte{}, lookup.Labelvalue.Value, t, indexes))
-							idxCache[oid] = s
-						}
-						level.Debug(logger).Log("Idx", lookup.Labelname, "old", t, "new", s)
+
+					var t string
+					indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
+					if indexes != nil {
+						t = s
+						s = string(lookup.Labelvalue.Regex.ExpandString([]byte{}, lookup.Labelvalue.Value, t, indexes))
 					}
+					level.Debug(logger).Log("metric", metric.Name, "idx", lookup.Labelname[c], "old", t, "new", s)
 					if s == "@drop@" {
 						labels["@drop@"] = "drop"
 						return labels
 					}
-				} else if ok {
-					// pretty cheap, so we do not cache
-					s = strings.TrimSpace(pduValueAsString(&pdu, typ))
-				} else {
-					s = ""
 				}
 				if lookup.Remap != nil {
 					v, x := lookup.Remap[s]
@@ -887,7 +890,7 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 				labels[lookup.Labelname[c]] = s
 				if ok {
 					a := []int{int(gosnmp.ToBigInt(pdu.Value).Int64())}
-					labelSubOids[lookup.Labelname[c]] = a
+					labelSubOids[lookup.Labelname[c]] = a	// for chaining
 					if (c < last) && (! lookup.Inject) {
 						labelSubOids[lookup.Labelname[c+1]] = a
 					}

@@ -583,6 +583,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "node1",
 								Type:      "counter",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -595,6 +597,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "node1",
 								Type:      "counter",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -675,6 +679,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -687,6 +693,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -767,6 +775,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octetIndex",
 								Type:      "OctetString",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -779,6 +789,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octetIndex",
 								Type:      "OctetString",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -791,6 +803,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "bitstringIndex",
 								Type:      "Bits",
+								Oid: "1.2.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -803,6 +817,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "bitstringIndex",
 								Type:      "Bits",
+								Oid: "1.2.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -815,6 +831,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "ipaddrIndex",
 								Type:      "InetAddressIPv4",
+								Oid: "1.3.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -827,6 +845,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "ipaddrIndex",
 								Type:      "InetAddressIPv4",
+								Oid: "1.3.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -839,6 +859,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "netaddrIndex",
 								Type:      "InetAddressIPv4",
+								Oid: "1.4.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -851,6 +873,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "netaddrIndex",
 								Type:      "InetAddressIPv4",
+								Oid: "1.4.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -863,6 +887,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "physaddress48Index",
 								Type:      "PhysAddress48",
+								Oid: "1.5.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -875,6 +901,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "physaddress48Index",
 								Type:      "PhysAddress48",
+								Oid: "1.5.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -888,6 +916,8 @@ func TestGenerateConfigModule(t *testing.T) {
 								Labelname: "fixedSizeIndex",
 								Type:      "OctetString",
 								FixedSize: 8,
+								Oid: "1.6.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -901,6 +931,8 @@ func TestGenerateConfigModule(t *testing.T) {
 								Labelname: "fixedSizeIndex",
 								Type:      "OctetString",
 								FixedSize: 8,
+								Oid: "1.6.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -914,6 +946,8 @@ func TestGenerateConfigModule(t *testing.T) {
 								Labelname: "impliedSizeIndex",
 								Type:      "OctetString",
 								Implied:   true,
+								Oid: "1.7.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -927,6 +961,8 @@ func TestGenerateConfigModule(t *testing.T) {
 								Labelname: "impliedSizeIndex",
 								Type:      "OctetString",
 								Implied:   true,
+								Oid: "1.7.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -939,6 +975,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "ipv4Index",
 								Type:      "InetAddressIPv4",
+								Oid: "1.8.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -951,6 +989,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "ipv4Index",
 								Type:      "InetAddressIPv4",
+								Oid: "1.8.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -963,6 +1003,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "ipv6Index",
 								Type:      "InetAddressIPv6",
+								Oid: "1.9.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -975,6 +1017,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "ipv6Index",
 								Type:      "InetAddressIPv6",
+								Oid: "1.9.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1011,6 +1055,8 @@ func TestGenerateConfigModule(t *testing.T) {
 								Labelname:  "tableIndex",
 								Type:       "EnumAsInfo",
 								EnumValues: map[int]string{0: "a"},
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						EnumValues: map[int]string{0: "a"},
@@ -1025,6 +1071,8 @@ func TestGenerateConfigModule(t *testing.T) {
 								Labelname:  "tableIndex",
 								Type:       "EnumAsInfo",
 								EnumValues: map[int]string{0: "a"},
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1065,6 +1113,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octetIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1113,6 +1163,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octetIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1164,6 +1216,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octetIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1216,10 +1270,14 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octetIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 							{
 								Labelname: "octetIndex2",
 								Type:      "gauge",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1294,6 +1352,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "octet_Index",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1337,6 +1397,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1370,6 +1432,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1403,6 +1467,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1415,6 +1481,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1456,6 +1524,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1479,6 +1549,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1531,6 +1603,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1554,6 +1628,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 						Lookups: []*config.Lookup{
@@ -1599,6 +1675,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1633,6 +1711,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1667,6 +1747,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1700,6 +1782,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableAddr",
 								Type:      "InetAddress",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 					},
@@ -1712,6 +1796,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableAddr",
 								Type:      "InetAddress",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 					},
@@ -1767,6 +1853,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1804,6 +1892,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableIndex",
 								Type:      "gauge",
+								Oid: "1.1.1.1",
+								IsNative: true,
 							},
 						},
 					},
@@ -1840,6 +1930,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableAddr",
 								Type:      "InetAddressMissingSize",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 					},
@@ -1852,6 +1944,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableAddr",
 								Type:      "InetAddressMissingSize",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 					},
@@ -1906,6 +2000,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableAddr",
 								Type:      "LldpPortId",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 					},
@@ -1918,6 +2014,8 @@ func TestGenerateConfigModule(t *testing.T) {
 							{
 								Labelname: "tableAddr",
 								Type:      "LldpPortId",
+								Oid: "1.1.1.2",
+								IsNative: true,
 							},
 						},
 					},
