@@ -14,7 +14,7 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - better [documentation](generator/) of the generator file format and implications to the exporter.
 - a much more fine grained configuration of emitted metrics, its label names and label values
 - dropping a metric based on regex match of its label value(s)
-- replacing the metric name based on its value regex match
+- replacing the metric name based on its value regex match or sub OID
 - dropping labels based on label value regex match
 - remapping metric as well as label values
 - non-numeric override regex\_extracts results, i.e. consistent behavior as without an override: for non-float values insert a label=value pair and set metric value = 1.0.
@@ -22,6 +22,8 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - injection of non-index based labels and related PDU values
 - chaining of index lookups even for indexes not being defined for the processed metric/table.
 - identity lookups (i.e. where the lookup name is the same as the source\_index name) do not pull in the related index table from the SNMP target anymore (instead it gets generated on the-fly).
+- sub OID filter for regex\_extracts and label regexes.
+- new value type `uptime`: instructs snmp-exporter to convert the value (uptime TimeTicks) to a UNIX timestamp (boot time) -> constant values.
 - automatic removal of leading and trailing whitespaces from PDU values
 - CLI output file option.
 
