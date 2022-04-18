@@ -604,6 +604,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			if s == metric.Name || s == sanitizeMetricName(metric.Oid, cfg.Prefix) {
 				metric.RegexpExtracts = params.RegexpExtracts
 				metric.Remap = params.Remap
+				metric.Rename = params.Rename
 			}
 		}
 	}

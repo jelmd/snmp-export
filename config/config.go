@@ -194,6 +194,7 @@ type Metric struct {
 	RegexpExtracts map[string][]RegexpExtract `yaml:"regex_extracts,omitempty"`
 	EnumValues     map[int]string             `yaml:"enum_values,omitempty"`
 	Remap          map[string]string          `yaml:"remap,omitempty"`
+	Rename         []RegexpExtract            `yaml:"rename,omitempty"`
 }
 
 type Index struct {

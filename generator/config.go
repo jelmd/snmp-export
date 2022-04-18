@@ -32,6 +32,7 @@ type MetricOverrides struct {
 	RegexpExtracts map[string][]config.RegexpExtract `yaml:"regex_extracts,omitempty"`
 	Type           string                            `yaml:"type,omitempty"`
 	Remap          map[string]string                 `yaml:"remap,omitempty"`
+	Rename         []config.RegexpExtract            `yaml:"rename,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

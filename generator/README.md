@@ -43,10 +43,10 @@ modules:
     max_repetitions: intNumber             # Default: 25
     retries: intNumber                     # Default: 3
     timeout: numSeconds                    # Default: 5
-    prefix: metricsPrefix                  # Default: ""
+    prefix: metricsPrefix                  # Default: ''
 
     auth:                                  # SNMP authentication parameters:
-      community: communityName             #   SNMPv1 & v2c. Default: "public"
+      community: communityName             #   SNMPv1 & v2c. Default: 'public'
 
                                            #   SNMPv3:
       security_level: secLevel             #   authPriv|authNoPriv|noAuthNoPriv. Default: "noAuthNoPriv"
@@ -55,7 +55,7 @@ modules:
       auth_protocol: authProto             #   auth[No]Priv: MD5|SHA|SHA224|SHA256|SHA384|SHA512. Default: "MD5"
       priv_protocol: privProto             #   authPriv: DES|AES|AES192|AES256. Default: "DES"
       priv_password: privPassword          #   authPriv: Mandatory.
-      context_name: ctxName                #   Default: ""
+      context_name: ctxName                #   Default: ''
 
     lookups:                               # Optional with one or more:
       - source_indexes:                    #   Mandatory with one or more:
@@ -68,9 +68,9 @@ modules:
           ...
         drop_source_indexes: boolVal       #   Default: false
         lookup: tableNameChain             #   Mandatory.
-        rename: newIndexName               #   Default: "" (i.e. do not rename)
+        rename: newIndexName               #   Default: '' (i.e. do not rename)
         revalue:                           #   Optional.
-          regex: regexExpr                 #     Default: '.*'
+          regex: regexExpr                 #     Default: ''
           value: newValue                  #     Default: '$1'. Special value: `@drop@` .. drop metric on match.
           sub_oids: regexExpr              #     optional subOid filter.
         remap:                             #   Optional with one or more:
@@ -80,18 +80,21 @@ modules:
     overrides:                             # Optional with one or more:
       metricName:                          #   Mandatory.
         ignore: boolVal                    #     Default: false
-        type: newType                      #     Default: "" (i.e. keep type as is)
+        type: newType                      #     Default: '' (i.e. keep type as is)
         regex_extracts:                    #     Optional with one or more:
-          newSuffix:                       #       Default: "" (Special: leading `.`) with one or more:
-            -  regex: regexExpr            #         Default: '.*'
+          newSuffix:                       #       Default: '' (Special: leading `.` or `^`) with one or more:
+            -  regex: regexExpr            #         Default: ''
                value: newValue             #         Default: '$1'. Special value: `@drop@` .. drop metric on match.
                sub_oids: regexExpr         #         optional subOid filter.
             ...
         remap:                             #     Optional with one or more:
           key: val
           ...
+        rename:                            #     Optional with one or more:
+          - sub_oids: regexExpr            #         Default: ''
+            value: newValue                #         Default: '$1'.
+          ...
 ```
-
 The `generator.yml` example provides a coarse grained list of modules which might be useful to get in touch with the exporter and can be used as a starting point for a more fine grained configuration, which meets your needs and saves a lot of energy.
 
 # How it works
@@ -351,7 +354,7 @@ However, for others like process lists they are definitely unstable. So make sur
 This is an optional map, which allows one to replace label values. The final label value (i.e. after optional revalue settings got applied) is the key for the map. If the map contains it, the label value gets replaced by the value of the related map entry. Otherwise it stays at is. This might be more efficient than applying a list of regex to each metric value several times. However, take care to not run into `* collected metric ... was collected before with the same name and label values` by mapping several values to the same result which eventually make the metric non-unique anymore (and therefore the error).
 
 ## overrides
-Allows to drop metrics, change its representation type (gauge, counter, etc.) or to replace a metric with a new one based on a regex which matches the value of the original metric.
+The `override` config deals with metric names and values. E.g. it allows one to drop metrics based on its value, change the metric's name, modify/remap the metric value, or to change its representation type (gauge, counter, etc.).
 
 ### _metricName_
 The name of the metric to which this override should be applied.
@@ -380,7 +383,7 @@ Drops the metric from the exporter's module config if set `true`. And of course:
 #### regex\_extracts:
 Specifies how a new metric should be created. The generic format is:
 ```
-MetricSuffix:             # Special: leading `.`
+MetricSuffix:             # Special: leading `.` or `^`
   - regex: regexExpr
     value: newValue       # Special: `@drop@`
     sub_oids: regexExpr   # optional subOid filter.
@@ -400,7 +403,7 @@ NOTE: In contrast to the upstream version, a zero length result string does not 
 
 Specials:
 
-If the _MetricSuffix_ starts with a dot (`.`), the name of generated metrics is not `metricName + _MetricSuffix_` but `_MetricSuffix_` without the leading dot!
+If the _MetricSuffix_ starts with a dot (`.`), the new metric name gets created by just replacing the dot with the module prefix + `_` (if any). If it starts with a circumflex (`^`), it gets removed and the remaining part becomes the new metric name (i.e. no prefix). Otherwise _MetricSuffix_ gets append to the related metric name.
 
 If the _newValue_ results into `@drop@`, the original metric gets dropped and no new metric, no matter, whether previous regex pairs had a match. So to drop e.g. only metrics having a value of `0`, one may use:
 ```
@@ -417,6 +420,20 @@ The 2nd regex pair is important, otherwise no match would happen for values != 0
 
 #### remap
 This optional setting allows one to replace a metric's value using a map (instead of a bunch of regex pairs). After the optional regex\_extracts got applied, the value gets converted into its string representation and used as key for the lookup within the map. On match the value of the entry found becomes the metric's value. However, for `counter`, `gauge`, `Float`, `Double`, `DateAndTime` and `EnumAs*` a new value gets parsed as Float64 first - only if convertion succeeds, the new value will be set (otherwise the metric value is kept as is). If the result of a map lookup is `@drop@` the related metric gets dropped. For `Bits` no remapping gets applied (create an issue on [github](https://github.com/jelmd/snmp_exporter/issues), if you really need it).
+
+
+#### rename
+This optional array contains sub\_oids/value pairs. If the `sub_oids` regex matches the subOid of the related metric instance, the metric's name gets set to `value`. First match wins. If no match occures, the metric name stays as is. E.g.
+```
+    overrides: &lcpIII_entPhySensorValue_overrides
+      entPhySensorValue:
+        rename:
+          - value: lcp_fan_pct
+            sub_oids: '3009|301[0-4]'
+          - value: lcp_temperature_C
+            sub_oids: ''100[18]|300[1-8]|301[56]'
+```
+This would cause all metric instances having a subOid of 3009..3014 to be renamed to `lcp_fan_pct`, and all instances with a subOid of 1001, 1008, 3001..3008, 3015, and 3016 to be renamed to `lcp_temperature_C`. All others will keep its name `entPhySensorValue`. But remember, the name can still be overwritten/modified by other directives like `regex_extracts`.
 
 
 # EnumAsInfo and EnumAsStateSet
