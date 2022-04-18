@@ -590,8 +590,12 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		s := sanitizeMetricName(mname, cfg.Prefix)
 		for suffix, regexpair := range params.RegexpExtracts {
 			var t string
-			if len(suffix) > 0 && suffix[0] == '.' {
-				t = "." + sanitizeMetricName(suffix[1:], cfg.Prefix)
+			if len(suffix) > 0 && (suffix[0] == '.' || suffix[0] == '^') {
+				if (suffix[0] == '.') {
+					t = "." + sanitizeMetricName(suffix[1:], cfg.Prefix)
+				} else {
+					t = "." + sanitizeMetricName(suffix[1:], "")
+				}
 			} else {
 				t = sanitizeLabelName(suffix)
 			}
