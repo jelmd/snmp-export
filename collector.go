@@ -386,6 +386,14 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	switch metric.Type {
 	case "counter":
 		t = prometheus.CounterValue
+	case "uptime":
+		t = prometheus.CounterValue
+		n := - int64(value)
+		if pdu.Type == 0x43 {
+			n /= 100		// Timeticks are usally given in 100 Hz
+		}
+		n += time.Now().Unix()
+		value = float64(n - (n & 1))	// n % 2 == n & 1
 	case "gauge":
 		t = prometheus.GaugeValue
 	case "Float", "Double":
@@ -742,7 +750,7 @@ func indexOidsAsString(indexOids []int, typ string, fixedSize int, implied bool,
 	}
 
 	switch typ {
-	case "Integer32", "Integer", "gauge", "counter":
+	case "Integer32", "Integer", "gauge", "counter", "uptime":
 		// Extract the oid for this index, and keep the remainder for the next index.
 		subOid, indexOids := splitOid(indexOids, 1)
 		return fmt.Sprintf("%d", subOid[0]), subOid, indexOids

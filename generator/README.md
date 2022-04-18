@@ -376,6 +376,7 @@ Set the type used to convert the received SNMP value (collection of one or more 
 - *EnumAsInfo*: An enum for which a single timeseries is created. Good for constant values.
 - *EnumAsStateSet*: An enum with a time series per state. Good for variable low-cardinality enums.
 - *Bits*: An RFC 2578 BITS construct, which produces a StateSet with a time series per bit.
+- *uptime*: snmp-exporter internal. Converts the value (usually TimeTicks) into a boot time UNIX timestamp (i.e. seconds since 1970-01-01 00:00:00 UTC), so that it becomes a constant and can be stored in a very efficient way by time series DBs. However, this assumes, that scraping the related target takes always the same time +-2 s (snmp-exporter rounds it by 2), because the time gets calculated wrt. to the time when scraping has been done (snmp-exporter fetches all required SNMP data first, before it starts to process it).
 
 #### ignore: _boolVal_
 Drops the metric from the exporter's module config if set `true`. And of course: if no metric gets created, no lookups as well as no regex\_extracts have an impact on it. However, if needed, the required SNMP request will be made to obtain the required data, e.g. to resolve an index number of a table into its textual representation.
