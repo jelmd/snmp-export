@@ -838,7 +838,7 @@ func TestIndexesToLabels(t *testing.T) {
 				Lookups: []*config.Lookup{{Labels: []string{"l"}, Labelname: []string{"l"}, Oid: []string{"1.2.3"}}},
 			},
 			oidToPdu: map[string]gosnmp.SnmpPDU{},
-			result:   map[string]string{"l": ""},
+			result:   map[string]string{"l": "4"},
 		},
 		{
 			oid:      []int{},
@@ -1007,7 +1007,7 @@ func TestIndexesToLabels(t *testing.T) {
 		idxCache := map[string]string{}
 		got, _ := indexesToLabels(c.oid, &c.metric, c.oidToPdu, idxCache, l)
 		if !reflect.DeepEqual(got, c.result) {
-			t.Errorf("%d indexesToLabels(%v, %#v, %#v): got %v, want %v", n, c.oid, c.metric, c.oidToPdu, got, c.result)
+			t.Errorf("indexesToLabels %d :\nsubOids: %v\n%#v\n%#v\nGot %v\nWant %v\nidxCache: %#v", n, c.oid, c.metric, c.oidToPdu, got, c.result, idxCache)
 		}
 	}
 }

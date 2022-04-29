@@ -66,4 +66,6 @@ type Lookup struct {
 	Revalue           config.RegexpExtract  `yaml:"revalue,omitempty"`
 	Mprefix           []string `yaml:"mprefix,omitempty"`
 	Remap             map[string]string `yaml:"remap,omitempty"`
+	SubOidRemap       map[string]string `yaml:"sub_oid_remap,omitempty"`
+	SubOids           config.Regexp     `yaml:"sub_oids,omitempty"`
 }

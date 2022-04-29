@@ -400,8 +400,16 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 
 	// now apply to relevant metrics
 	for _, metric := range out.Metrics {
-		toDelete := []string{}
+		toDelete := map[string]int{}
         s := ""
+		for _, lookup := range cfg.Lookups {
+			if lookup.DropSourceIndexes {
+				for _, idx := range metric.Indexes {
+					toDelete[sanitizeLabelName(idx.Labelname)] = 1
+				}
+				break
+			}
+		}
 		lookupSeen := map[string]int{}
 		for _, lookup := range cfg.Lookups {
 			if len(lookup.Mprefix) > 0 {
@@ -433,7 +441,12 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 					s += ", " + lookupIndex
 				}
 			}
-			l := &config.Lookup{ Labelvalue: lookup.Revalue, Remap: lookup.Remap }
+			l := &config.Lookup {
+				Labelvalue: lookup.Revalue,
+				Remap: lookup.Remap,
+				SubOidRemap: lookup.SubOidRemap,
+				SubOids: lookup.SubOids,
+			}
 			l.Inject = len(lookup.SourceIndexes) == 0
 			if (! l.Inject) && (foundIndexes != len(lookup.SourceIndexes) || foundIndexes == 0) {
 				if len(s) > 0 {
@@ -449,11 +462,17 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			oid_name := strings.Split(lookup.Lookup, "|")
 			last := len(oid_name) - 1
 			if l.Inject {
+nextLabel:
 				for  c, label := range oid_name {
 					// add as pseudo index so that we get subOids as needed
 					idxNode, ok := nameToNode[label]
 					if !ok {
 						return nil, fmt.Errorf("Could not find pseudo index '%s' for %s::%s", label, mname, metric.Name)
+					}
+					for _, midx := range metric.Indexes {
+						if midx.Oid == idxNode.Oid {
+							continue nextLabel
+						}
 					}
 					idx := &config.Index{Labelname: label}
 					idx.Type, ok = metricType(idxNode.Type)
@@ -543,15 +562,21 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				lookupSeen[h] = 1
 				if lookup.DropSourceIndexes {
 					// the labels to drop from the final label map
-					toDelete = append(toDelete, l.Labels...)
-					toDelete = append(toDelete, l.Labelname[:last]...)
+					for _, s := range l.Labels {
+						toDelete[s] = 1
+					}
+					for _, s := range l.Labelname[:last] {
+						toDelete[s] = 1
+					}
 				}
 			}
 		}
 
 		if len(toDelete) > 0 {
 			m := &config.Lookup{}
-			m.Labelname = append(m.Labelname , toDelete...)
+			for s, _ := range toDelete {
+				m.Labelname = append(m.Labelname , s)
+			}
 			metric.Lookups = append(metric.Lookups, m)
 		}
 	}

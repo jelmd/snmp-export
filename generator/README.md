@@ -62,10 +62,11 @@ modules:
         - indexName
         - indexOID
         ...
-        mprefix:                           # Optional with one or more:
+        mprefix:                           #   Optional with one or more:
           - indexNamePrefix
           - indexOIDPrefix
           ...
+        sub_oids: regexExpr                #   Optional subOid filter.
         drop_source_indexes: boolVal       #   Default: false
         lookup: tableNameChain             #   Mandatory.
         rename: newIndexName               #   Default: '' (i.e. do not rename)
@@ -74,6 +75,9 @@ modules:
           value: newValue                  #     Default: '$1'. Special value: `@drop@` .. drop metric on match.
           sub_oids: regexExpr              #     optional subOid filter.
         remap:                             #   Optional with one or more:
+          key: val
+          ...
+        sub_oid_remap:                     #   Optional with one or more:
           key: val
           ...
 
@@ -239,6 +243,12 @@ If the SNMP v3 target device has 1+ context defined, use _ctxName_ to access it.
 ## lookups
 Optional list of lookups to perform to mangle label names or values (deduced from index names) or even to drop a metric based on the final value of a label. Lookups get applied in same order they appear in the config file, before any overrides get applied. Note that leading and trailing whitespaces get removed automagically from label values, so one does not need to create extra rules to accomplish this.
 
+
+Basically the exporter iterates for each metric through all lookups in the same order as configured. First all indexes defined in the MIB for the related table (if any) get add as labels to the metric as *indexName*="*indexValue*". Than the values of the `source_indexes` (which are usually the same as the ones defined in the MIB) get joined using a dot (`.`) and form the subOid to use for the 1st `lookup`. If no entry exists with the desired OID or a `sub_oids` is given and does not match the related regex, the exporter does nothing and continues with the next lookup (if any). Otherwise it applies the `revalue` config if appropriate, the `remap` and finally the `sub_oid_remap` config (if any). If at the end of this cycle the resulting string is not empty (i.e. has at least 1 character), a new label *lookup*="*result*" gets injected into the metric instance (if the result is `@drop@` lookup stops immediately and the metric instance gets dropped). Otherwise, the *lookup* label gets removed. Therefore the order of lookups is important, one lookup may overwrite another, or even remove it. When all lookups are done, the `source_indexes` labels get removed from the metric if `drop_source_indexes == true` and the exporter continues with applying `overrides`.
+
+So remember, every single lookup either inserts or removes a label (key=value pair), whereby an insert overwrites an existing label if it has the same key.
+
+
 ### source\_indexes: _list_
 The metric selector to which the lookup gets applied. Only if the related SNMP object (table) definition in the MIB contains *all* indexes named in the given _list_ the lookup gets applied to the metric (deduced from the walked objects). If more than one index is given, the index values of all indexes get append to the lookup label's OID and thus form the OID to lookup. E.g.:
 ```
@@ -246,9 +256,9 @@ The metric selector to which the lookup gets applied. Only if the related SNMP o
         lookup: cmcIIIVarName
         rename: name
 ```
-The OID of `cmcIIIVarName` is `1.3.6.1.4.1.2606.7.4.2.2.1.3` and if the value of the `cmcIIIVarDeviceIndex` is `123` and the value of `cmcIIIVarIndex` is `345` the would lookup `1.3.6.1.4.1.2606.7.4.2.2.1.3.123.345` to get the value for the label `cmcIIIVarName`, which gets finally renamed to `name`.
+The OID of `cmcIIIVarName` is `1.3.6.1.4.1.2606.7.4.2.2.1.3`. If the value of the `cmcIIIVarDeviceIndex` is `123` and the value of `cmcIIIVarIndex` is `345` the exporter would lookup `1.3.6.1.4.1.2606.7.4.2.2.1.3.123.345` to get the value for the label `cmcIIIVarName`, which gets finally renamed to `name`.
 
-If `source_indexes` contains an empty list, and a lookup value is given, the lookup result gets inserted into the related metric as a new label. The label name is the same as the lookup name, the label value the lookup result. If the lookup value is a chain (i.e. it contains `|`), the value gets split into a list of lookup values, which finally get all inserted as labels into the metric. However, a possible `rename` and/or `revalue` option gets applied to the last lookup within the list, only. So if one needs to mangle all, one should configure a single lookup for each label. E.g.:
+If `source_indexes` contains an empty list, and a lookup value is given, the lookup result gets inserted into the related metric as a new label. The label name is the same as the lookup name, the label value the lookup result. If the lookup value is a chain (i.e. it contains `|`), the value gets split into a list of lookup names, which finally get all inserted as labels into the metric. However, a possible `rename` and/or `revalue` option gets applied to the last lookup within the list, only. So if one needs to mangle all, one should configure a single lookup for each label. E.g.:
 ```
       - source_indexes: []
         mprefix: [cmcTcUnit1Status]
@@ -262,6 +272,9 @@ This would create a metric like `cmcTcUnit1Status{name="RLCP"} 1` and without th
 An option to further narrow down, to which metrics this lookup definition gets applied. Only if a metric's name or OID starts with a string in the given _list_ the lookup gets applied to it. This gets handy if several objects use the same index, e.g. `entPhysicalIndex`, but depending on the name of the metric you wanna lookup its textual representation in the `shortNameTable` or `longNameTable`, or look it up in the `entPhysicalName` but rename the label to `fan` or `sensor` depending the name of the metric. The source\_indexes option would be to coarse for it, would produce different labels with the same value.
 
 Per default the list is empty and implies no restriction wrt. the metric's name.
+
+### sub\_oids: _regex_
+Another option to further narrow down, to which metrics this lookup definition gets applied. If the *subOID* of the metric instance alias SNMP object does not match _regex_ the exporter skips this lookup and continues with the next one. For more details wrt. *subOID*  have a look at the `revalue` section below.
 
 ### drop\_source\_indexes: _boolVal_
 If set to `true`, the labels deduced from source\_indexes and all intermediate labels are finally removed from the related metric. This avoids label clutter when the new index is unique.
@@ -351,7 +364,11 @@ NOTE: Usually (e.g. for enumerated hardware) indexes are stable, do not change.
 However, for others like process lists they are definitely unstable. So make sure, that you have understood, what your SNMP server is doing, before using `sub_oids`.
 
 ### remap
-This is an optional map, which allows one to replace label values. The final label value (i.e. after optional revalue settings got applied) is the key for the map. If the map contains it, the label value gets replaced by the value of the related map entry. Otherwise it stays at is. This might be more efficient than applying a list of regex to each metric value several times. However, take care to not run into `* collected metric ... was collected before with the same name and label values` by mapping several values to the same result which eventually make the metric non-unique anymore (and therefore the error).
+This is an optional map, which allows one to replace label values. The label value, after the optional revalue setting got applied, is the key for the map. If the map contains it, the label value gets replaced by the value of the related map entry. Otherwise it stays at is. This might be more efficient than applying a list of regex to each metric value several times. However, take care to not run into `* collected metric ... was collected before with the same name and label values` by mapping several values to the same result which eventually make the metric non-unique anymore (and therefore the error).
+
+### sub\_oid\_remap
+This is the same as `remap`, but the lookup key gets formed by the *subOid* of the related SNMP object and the label value produced so far, concatenated with a semicolon (`;`). E.g. `Temperature.Value` becomes `123;Temperature.Value` if `123` is the subOid of the related SNMP object.
+
 
 ## overrides
 The `override` config deals with metric names and values. E.g. it allows one to drop metrics based on its value, change the metric's name, modify/remap the metric value, or to change its representation type (gauge, counter, etc.).
@@ -379,7 +396,7 @@ Set the type used to convert the received SNMP value (collection of one or more 
 - *uptime*: snmp-exporter internal. Converts the value (usually TimeTicks) into a boot time UNIX timestamp (i.e. seconds since 1970-01-01 00:00:00 UTC), so that it becomes a constant and can be stored in a very efficient way by time series DBs. However, this assumes, that scraping the related target takes always the same time +-2 s (snmp-exporter rounds it by 2), because the time gets calculated wrt. to the time when scraping has been done (snmp-exporter fetches all required SNMP data first, before it starts to process it).
 
 #### ignore: _boolVal_
-Drops the metric from the exporter's module config if set `true`. And of course: if no metric gets created, no lookups as well as no regex\_extracts have an impact on it. However, if needed, the required SNMP request will be made to obtain the required data, e.g. to resolve an index number of a table into its textual representation.
+Drops the metric from the exporter's module config if set to `true`. And of course: if no metric gets created, no lookups as well as no regex\_extracts have an impact on it. However, if needed, the required SNMP request will be made to obtain the required data, e.g. to resolve an index number of a table into its textual representation.
 
 #### regex\_extracts:
 Specifies how a new metric should be created. The generic format is:

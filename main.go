@@ -39,12 +39,15 @@ import (
 
 // Version must be set via -ldflags '-X'
 var Version string
+// Because the go-kit log bullshit does not expose the current log level ...
+var DebugEnabled bool
 
 var (
 	configFile    = kingpin.Flag("config.file", "Path to configuration file.").Short('f').Default("snmp.yml").String()
 	webConfig     = webflag.AddFlags(kingpin.CommandLine)
 	listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Short('l').Default(":9116").String()
 	dryRun        = kingpin.Flag("dry-run", "Only verify configuration is valid and exit.").Short('n').Default("false").Bool()
+	verbose = kingpin.Flag("verbose", "Same as --log.level=debug.").Short('v').Default("false").Bool()
 
 	// Metrics about the SNMP exporter itself.
 	snmpDuration = prometheus.NewSummaryVec(
@@ -153,7 +156,15 @@ func main() {
 	flag.AddFlags(kingpin.CommandLine, promlogConfig)
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
+	if *verbose {
+		promlogConfig.Level.Set("debug")
+	}
 	logger := promlog.New(promlogConfig)
+	if promlogConfig.Level != nil && promlogConfig.Level.String() == "debug" {
+		DebugEnabled = true
+	} else {
+		DebugEnabled = false
+	}
 
 	level.Info(logger).Log("msg", "Starting snmp_exporter", "version", Version)
 

@@ -215,6 +215,8 @@ type Lookup struct {
 	Type      []string   `yaml:"type,omitempty"`
 	Inject    bool     `yaml:"inject,omitempty"`
 	Remap     map[string]string  `yaml:"remap,omitempty"`
+	SubOidRemap map[string]string  `yaml:"sub_oid_remap,omitempty"`
+	SubOids   Regexp             `yaml:"sub_oids,omitempty"`
 }
 
 // Secret is a string that must not be revealed on marshaling.

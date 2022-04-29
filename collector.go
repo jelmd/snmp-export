@@ -132,7 +132,9 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 			oids = maxOids
 		}
 
+	if DebugEnabled {
 		level.Debug(logger).Log("msg", "Getting OIDs", "oids", oids)
+	}
 		getStart := time.Now()
 		packet, err := snmp.Get(getOids[:oids])
 		if err != nil {
@@ -141,10 +143,14 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 			}
 			return nil, fmt.Errorf("error getting target %s: %s", snmp.Target, err)
 		}
+	if DebugEnabled {
 		level.Debug(logger).Log("msg", "Get of OIDs completed", "oids", oids, "duration_seconds", time.Since(getStart))
+	}
 		// SNMPv1 will return packet error for unsupported OIDs.
 		if packet.Error == gosnmp.NoSuchName && snmp.Version == gosnmp.Version1 {
+	if DebugEnabled {
 			level.Debug(logger).Log("msg", "OID not supported by target", "oids", getOids[0])
+	}
 			getOids = getOids[oids:]
 			continue
 		}
@@ -155,7 +161,9 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 		}
 		for _, v := range packet.Variables {
 			if v.Type == gosnmp.NoSuchObject || v.Type == gosnmp.NoSuchInstance {
+	if DebugEnabled {
 				level.Debug(logger).Log("msg", "OID not supported by target", "oids", v.Name)
+	}
 				continue
 			}
 			result = append(result, v)
@@ -165,7 +173,9 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 
 	for _, subtree := range config.Walk {
 		var pdus []gosnmp.SnmpPDU
+	if DebugEnabled {
 		level.Debug(logger).Log("msg", "Walking subtree", "oid", subtree)
+	}
 		walkStart := time.Now()
 		if snmp.Version == gosnmp.Version1 {
 			pdus, err = snmp.WalkAll(subtree)
@@ -178,7 +188,9 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 			}
 			return nil, fmt.Errorf("error walking target %s: %s", snmp.Target, err)
 		}
+	if DebugEnabled {
 		level.Debug(logger).Log("msg", "Walk of subtree completed", "oid", subtree, "duration_seconds", time.Since(walkStart))
+	}
 
 		result = append(result, pdus...)
 	}
@@ -402,7 +414,9 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		t = prometheus.GaugeValue
 		value, err = parseDateAndTime(pdu)
 		if err != nil {
+	if DebugEnabled {
 			level.Debug(logger).Log("msg", "Error parsing DateAndTime", "err", err)
+	}
 			return []prometheus.Metric{}
 		}
 	case "EnumAsInfo":
@@ -429,11 +443,15 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 					metricType = t
 				} else {
 					metricType = "OctetString"
+	if DebugEnabled {
 					level.Debug(logger).Log("msg", "Unable to handle type value", "value", val, "oid", prevOid, "metric", newName)
+	}
 				}
 			} else {
 				metricType = "OctetString"
+	if DebugEnabled {
 				level.Debug(logger).Log("msg", "Unable to find type at oid for metric", "oid", prevOid, "metric", newName)
+	}
 			}
 		}
 
@@ -522,7 +540,9 @@ func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pdu
 			}
 			indexes := strMetric.Regex.FindStringSubmatchIndex(pduValue)
 			if indexes == nil {
-				level.Debug(logger).Log("msg", "No match found for regexp", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String())
+	if DebugEnabled {
+				level.Debug(logger).Log("msg", "No regex match", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String())
+	}
 				continue
 			}
 			res := strMetric.Regex.ExpandString([]byte{}, strMetric.Value, pduValue, indexes)
@@ -532,12 +552,16 @@ func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pdu
 				s = t
 			}
 			if s == "@drop@" {
+	if DebugEnabled {
 				level.Debug(logger).Log("msg", "Dropping metric", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
+	}
 				return []prometheus.Metric{}
 			}
 			v, err := strconv.ParseFloat(s, 64)
 			if err != nil {
+	if DebugEnabled {
 				level.Debug(logger).Log("msg", "Error parsing float64 from value", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
+	}
 				labelnames = append(labelnames, newName)
 				labelvalues = append(labelvalues, s)
 				v = 1.0
@@ -833,7 +857,7 @@ func indexOidsAsString(indexOids []int, typ string, fixedSize int, implied bool,
 func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) (map[string]string, string) {
 	labels := map[string]string{}
 	labelSubOids := map[string][]int{}
-	var subOids string
+	subOids := ""
 
 	// Prepare index info for the source indexes to lookup
 	for _, index := range metric.Indexes {
@@ -845,15 +869,21 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 		if index.IsNative {
 			labels[index.Labelname] = str
 			labelSubOids[index.Labelname] = subOid
-			// this allows us to not fetch the index2index table
-			if len(subOid) == 1 {
-				n := strconv.Itoa(subOid[0])
-				idxCache[index.Oid + "." + n] = n
-			}
+			// this allows us to skip fetching the index2index table
+			n := listToOid(subOid)
+			idxCache[index.Oid + "." + n] = n
+
+	// go-kit logging crap is slow as hell
+	if DebugEnabled {
+			level.Debug(logger).Log("idxCacheNativ", index.Oid  + "." + n, "value", n)
+	}
 		} else {
-			labelSubOids[index.Oid] = subOid
+			labelSubOids[index.Oid] = indexOids
+	if DebugEnabled {
+			level.Debug(logger).Log("idxCachePseudo", index.Oid, "value", listToOid(subOid))
+	}
 		}
-		if len(str) > 0 {
+		if len(str) != 0 {
 			subOids += "." + str
 		}
 		// remaining subOids to lookup
@@ -872,20 +902,40 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 			}
 			continue
 		}
+		if lookup.SubOids != nullRegexp {
+			idx := lookup.SubOids.FindStringIndex(subOids)
+			if idx == nil {
+				continue
+			}
+		}
 		applyRevalue := true
-		if len(lookup.Labelvalue.Value) > 0 {
+		if len(lookup.Labelvalue.Value) != 0 {
 			if lookup.Labelvalue.SubOids != nullRegexp {
 				idx := lookup.Labelvalue.SubOids.FindStringIndex(subOids)
-				applyRevalue =  idx != nil
+				applyRevalue = idx != nil
+	if DebugEnabled {
+				level.Debug(logger).Log("subOid_match", applyRevalue, "subOid", subOids, "regex", lookup.Labelvalue.SubOids.String())
+	}
+			} else {
+	if DebugEnabled {
+				level.Debug(logger).Log("subOid_match", "skip")
+	}
 			}
 		} else {
+	if DebugEnabled {
+			level.Debug(logger).Log("subOid_match", "skip")
+	}
 			applyRevalue = false
 		}
 		last := len(lookup.Oid) - 1
 		for c, oid := range lookup.Oid {
-			s := oid	// just save for debug statement below
-			if lookup.Inject {
+			boid := oid	// just save for debug statement below
+			if lookup.Inject && c == 0 {
 				oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[lookup.Oid[c]]))
+				if strings.HasSuffix(oid, ".") {
+					oid = fmt.Sprintf("%s%s", oid, subOids)
+					labelSubOids[lookup.Oid[c]] = indexOids
+				}
 			} else if c == 0 {
 				// in the first round, lookup the [multi] index
 				for _, label := range lookup.Labels {
@@ -894,43 +944,68 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 			} else {
 					oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[lookup.Labelname[c]]))
 			}
-			level.Debug(logger).Log("BaseOid", s, "label", lookup.Labelname[c], "lookupOid", oid)
-			s = idxCache[oid]
+			s := idxCache[oid]
 			pdu, ok := oidToPdu[oid]
-			if ok || len(s) > 0 || applyRevalue || lookup.Remap != nil {
+	if DebugEnabled {
+			level.Debug(logger).Log("BaseOid", boid, "lookup", lookup.Labelname[c], "lookupOid", oid, "subOid", subOids, "cache", s, "PDU_found", ok, "Inject", lookup.Inject)
+	}
+			if ok || len(s) != 0 || lookup.Inject {
 				var typ  string
-				if len(lookup.Type) > 0 {
+				if len(lookup.Type) != 0 {
 					typ = lookup.Type[c]
 				}
 
 				if len(s) == 0  && ok {
 					s = strings.TrimSpace(pduValueAsString(&pdu, typ))
+	if DebugEnabled {
+					level.Debug(logger).Log("PDU_value", s)
+	}
 					idxCache[oid] = s
 				}
 				if applyRevalue && c == last {
-					var t string
+					t := s
 					indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
 					if indexes != nil {
-						t = s
 						s = string(lookup.Labelvalue.Regex.ExpandString([]byte{}, lookup.Labelvalue.Value, t, indexes))
-					}
-					level.Debug(logger).Log("metric", metric.Name, "idx", lookup.Labelname[c], "old", t, "new", s)
-					if s == "@drop@" {
-						labels["@drop@"] = "drop"
-						return labels , subOids
+	if DebugEnabled {
+						level.Debug(logger).Log("revalue_metric", metric.Name, "label", lookup.Labelname[c], "old", t, "new", s)
+	}
 					}
 				}
 				if lookup.Remap != nil {
 					v, x := lookup.Remap[s]
 					if x {
-						if v == "@drop@" {
-							labels["@drop@"] = "drop"
-							return labels, subOids
-						}
+	if DebugEnabled {
+						level.Debug(logger).Log("remap_metric", metric.Name, "label", lookup.Labelname[c], "old", s, "new", v)
+	}
 						s = v
 					}
 				}
-				labels[lookup.Labelname[c]] = s
+				if lookup.SubOidRemap != nil {
+					v, x := lookup.SubOidRemap[subOids + ";" + s]
+					if x {
+	if DebugEnabled {
+						level.Debug(logger).Log("remap_metric", metric.Name, "label", lookup.Labelname[c], "old", subOids + ";" + s, "new", v)
+	}
+						s = v
+					}
+				}
+				if s == "@drop@" {
+					// drop the metric
+					labels["@drop@"] = "drop"
+					return labels , subOids
+				}
+				if len(s) != 0 {
+	if DebugEnabled {
+					level.Debug(logger).Log("Action", "inject", "label", lookup.Labelname[c], "value", s)
+	}
+					labels[lookup.Labelname[c]] = s
+				} else {
+	if DebugEnabled {
+					level.Debug(logger).Log("Action", "delete", "label", lookup.Labelname[c])
+	}
+					delete(labels, lookup.Labelname[c])
+				}
 				if ok {
 					a := []int{int(gosnmp.ToBigInt(pdu.Value).Int64())}
 					labelSubOids[lookup.Labelname[c]] = a	// for chaining
@@ -938,10 +1013,15 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 						labelSubOids[lookup.Labelname[c+1]] = a
 					}
 				}
-			} else {
-				labels[lookup.Labelname[c]] = ""
+	if DebugEnabled {
+				level.Debug(logger).Log("--------------------------------------------------", "")
+	}
 			}
 		}
+	}
+
+	if DebugEnabled {
+		level.Debug(logger).Log("Labels-done-", "-->", "metric", metric.Name, "labels", fmt.Sprintf("%v", labels))
 	}
 
 	return labels, subOids
