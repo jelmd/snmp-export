@@ -22,7 +22,7 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - injection of non-index based labels and related PDU values
 - chaining of index lookups even for indexes not being defined for the processed metric/table.
 - identity lookups (i.e. where the lookup name is the same as the source\_index name) do not pull in the related index table from the SNMP target anymore (instead it gets generated on the-fly).
-- sub OID filter for regex\_extracts and label regexes.
+- sub OID filter for regex\_extracts, lookups and label regexes.
 - new value type `uptime`: instructs snmp-exporter to convert the value (uptime TimeTicks) to a UNIX timestamp (boot time) -> constant values.
 - automatic removal of leading and trailing whitespaces from PDU values
 - CLI output file option.
