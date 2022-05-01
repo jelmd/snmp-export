@@ -370,6 +370,12 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	}
 
 	newName := metric.Name
+	if len(subOid) == 0 {
+		i := strings.LastIndexByte(metric.Oid, '.')
+		if i != -1 {
+			subOid = metric.Oid[i+1:]
+		}
+	}
     if len(metric.Rename) != 0 && len(subOid) != 0 {
 		for _, e := range metric.Rename {
 			if e.SubOids == nullRegexp {
