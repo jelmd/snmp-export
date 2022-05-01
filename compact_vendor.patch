@@ -37,3 +37,17 @@
  
  	// Finally the samples, one line for each.
  	for _, metric := range in.Metric {
+--- ./vendor/github.com/prometheus/client_golang/prometheus/registry.go.orig	Sun May  1 21:53:07 2022
++++ ./vendor/github.com/prometheus/client_golang/prometheus/registry.go	Sun May  1 22:52:44 2022
+@@ -601,10 +601,7 @@
+ 	metricFamily, ok := metricFamiliesByName[desc.fqName]
+ 	if ok { // Existing name.
+ 		if metricFamily.GetHelp() != desc.help {
+-			return fmt.Errorf(
+-				"collected metric %s %s has help %q but should have %q",
+-				desc.fqName, dtoMetric, desc.help, metricFamily.GetHelp(),
+-			)
++			metricFamily.Help = proto.String(desc.help)
+ 		}
+ 		// TODO(beorn7): Simplify switch once Desc has type.
+ 		switch metricFamily.GetType() {
