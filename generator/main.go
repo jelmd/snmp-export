@@ -14,10 +14,12 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/go-kit/kit/log"
@@ -25,10 +27,37 @@ import (
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
 	"gopkg.in/alecthomas/kingpin.v2"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 
 	"github.com/prometheus/snmp_exporter/config"
 )
+
+var reOID = regexp.MustCompile(`^([0-9]+\.)*[0-9]+$`)
+
+func annotateOIDs(node *yaml.Node, nameToNode map[string]*Node) {
+	if node == nil {
+		return
+	}
+	if (node.Tag == "!!str") && reOID.MatchString(node.Value) {
+		snode, ok := nameToNode[node.Value]
+		if ok {
+			node.LineComment = "\t" + snode.Label
+			return
+		}
+		// 2nd try w/o trailing .0 (index num)
+		idx := strings.LastIndexByte(node.Value, '.')
+		if (idx != -1) {
+			snode, ok := nameToNode[node.Value[:idx]]
+			if ok {
+				node.LineComment = "\t" + snode.Label + node.Value[idx:]
+			}
+		}
+		return
+	}
+	for _, n := range node.Content {
+		annotateOIDs(n, nameToNode)
+	}
+}
 
 // Generate a snmp_exporter config and write it out.
 func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger) error {
@@ -42,7 +71,7 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 		return fmt.Errorf("error reading yml config: %s", err)
 	}
 	cfg := &Config{}
-	err = yaml.UnmarshalStrict(content, cfg)
+	err = yaml.Unmarshal(content, cfg)
 	if err != nil {
 		return fmt.Errorf("error parsing yml config: %s", err)
 	}
@@ -78,8 +107,18 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 		return fmt.Errorf("error marshaling yml: %s", err)
 	}
 
+	// help for troubleshooting and performance optimizations
+	buf := bytes.NewBufferString(string(out))
+	dec := yaml.NewDecoder(buf)
+	var node yaml.Node
+	if err := dec.Decode(&node); err != nil {
+		return fmt.Errorf("error parsing generated config: %s", err)
+	}
+    annotateOIDs(&node, nameToNode)
+	out, err = yaml.Marshal(&node)
+
 	// Check the generated config to catch auth/version issues.
-	err = yaml.UnmarshalStrict(out, &config.Config{})
+	err = yaml.Unmarshal(out, &config.Config{})
 	if err != nil {
 		return fmt.Errorf("error parsing generated config: %s", err)
 	}

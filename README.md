@@ -25,6 +25,7 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - sub OID filter for regex\_extracts, lookups and label regexes.
 - new value type `uptime`: instructs snmp-exporter to convert the value (uptime TimeTicks) to a UNIX timestamp (boot time) -> constant values.
 - automatic removal of leading and trailing whitespaces from PDU values
+- better support for troubleshooting and optimization by OID "annotations"
 - CLI output file option.
 
 It follows the main motto: Tackle the root cause of inefficiency (e.g. do not compose/emit data no one needs) instead of the symptoms (e.g. with prometheus client relabeling) and thus saving a lot of ressources and finally energy.
