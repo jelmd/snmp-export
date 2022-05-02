@@ -1,3 +1,9 @@
+# If you get an "OID not found" error, set your MIBDIRS env variable. E.g.:
+#
+# export BASEDIR=/usr/share/snmp-export
+# [[ -d $BASEDIR ]] || BASEDIR=${PWD}
+# export MIBDIRS=${BASEDIR}/mibs:${BASEDIR}/cisco_v2:/etc/net-snmp/snmp/mibs
+#
 modules:
   # Default IF-MIB interfaces table with ifIndex.
   if_mib:
