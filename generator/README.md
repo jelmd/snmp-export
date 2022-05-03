@@ -72,6 +72,7 @@ modules:
         rename: newIndexName               #   Default: '' (i.e. do not rename)
         revalue:                           #   Optional.
           regex: regexExpr                 #     Default: ''
+          invert: boolVal                  #     Default: false
           value: newValue                  #     Default: '$1'. Special value: `@drop@` .. drop metric on match.
           sub_oids: regexExpr              #     optional subOid filter.
         remap:                             #   Optional with one or more:
@@ -88,6 +89,7 @@ modules:
         regex_extracts:                    #     Optional with one or more:
           newSuffix:                       #       Default: '' (Special: leading `.` or `^`) with one or more:
             -  regex: regexExpr            #         Default: ''
+               invert: boolVal             #         Default: false
                value: newValue             #         Default: '$1'. Special value: `@drop@` .. drop metric on match.
                sub_oids: regexExpr         #         optional subOid filter.
             ...
@@ -329,6 +331,9 @@ Change the value produced using the last component of the *lookup*._tableNameCha
 #### regex: _regexExpr_
 The regex to use. If it matches the final value, replace it with the expression of `value`. One may use capture-groups to keep/transfer certain parts to the value expression.
 
+#### invert: _boolVal_
+Negate the outcome of the regex match. I.e. if `invert` is `false` (the default), the exporter behaves as usual. However, if `invert` is set to `true`, the given `value` gets set only if no match occures.
+
 #### value: _newValue_
 Replace the value of the related label with the given _newValue_ if _regexExpr_ matched the current value of the label. Capture-groups using `$num` are supported.
 
@@ -403,11 +408,12 @@ Specifies how a new metric should be created. The generic format is:
 ```
 MetricSuffix:             # Special: leading `.` or `^`
   - regex: regexExpr
+    invert: boolVal       # Default: false
     value: newValue       # Special: `@drop@`
     sub_oids: regexExpr   # optional subOid filter.
   ...
 ```
-A new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the evaluated regex - capture-groups are supported. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0`.
+Per default on match a new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the expanded `newValue` (capture-groups are supported). If `invert` is set to `true`, the value gets replaced with the `newValue` only if no match occures. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0`.
 
 So first match always wins and stops regex evaluation!
 

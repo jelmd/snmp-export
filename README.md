@@ -25,6 +25,7 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - sub OID filter for regex\_extracts, lookups and label regexes.
 - new value type `uptime`: instructs snmp-exporter to convert the value (uptime TimeTicks) to a UNIX timestamp (boot time) -> constant values.
 - automatic removal of leading and trailing whitespaces from PDU values
+- negate the outcome of a match, i.e. replace only if regex does not match.
 - better support for troubleshooting and optimization by OID "annotations"
 - CLI output file option.
 

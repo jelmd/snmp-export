@@ -545,9 +545,9 @@ func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pdu
 				}
 			}
 			indexes := strMetric.Regex.FindStringSubmatchIndex(pduValue)
-			if indexes == nil {
+			if (indexes == nil && !strMetric.Invert) || (indexes != nil && strMetric.Invert) {
 	if DebugEnabled {
-				level.Debug(logger).Log("msg", "No regex match", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String())
+				level.Debug(logger).Log("msg", "No regex match", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String(), "invert", strMetric.Invert)
 	}
 				continue
 			}
@@ -971,10 +971,10 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 				if applyRevalue && c == last {
 					t := s
 					indexes := lookup.Labelvalue.Regex.FindStringSubmatchIndex(s)
-					if indexes != nil {
+					if (indexes != nil && !lookup.Labelvalue.Invert) || (indexes == nil && lookup.Labelvalue.Invert) {
 						s = string(lookup.Labelvalue.Regex.ExpandString([]byte{}, lookup.Labelvalue.Value, t, indexes))
 	if DebugEnabled {
-						level.Debug(logger).Log("revalue_metric", metric.Name, "label", lookup.Labelname[c], "old", t, "new", s)
+						level.Debug(logger).Log("revalue_metric", metric.Name, "label", lookup.Labelname[c], "old", t, "new", s, "invert", lookup.Labelvalue.Invert)
 	}
 					}
 				}

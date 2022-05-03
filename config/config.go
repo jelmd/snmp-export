@@ -253,6 +253,7 @@ type RegexpExtract struct {
 	SubOids       Regexp `yaml:"sub_oids,omitempty"`
 	Value string `yaml:"value"`
 	Regex Regexp `yaml:"regex"`
+	Invert bool  `yaml:"invert,omitempty"`
 }
 
 func (c *RegexpExtract) UnmarshalYAML(unmarshal func(interface{}) error) error {

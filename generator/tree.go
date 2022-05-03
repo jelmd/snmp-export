@@ -658,9 +658,14 @@ nextLabel:
 // Basically used to "compare" and drop duplicated lookups
 func getLookupHash(l *config.Lookup) string {
 	s := strings.Join(l.Labels, ":") + strings.Join(l.Labelname, ":") +
-		strings.Join(l.Oid, ":") + strings.Join(l.Type, ":");
-	if len(l.Labelvalue.Value ) > 0 {
-		s += ":" + l.Labelvalue.Value + ":"  + l.Labelvalue.Regex.String()
+		strings.Join(l.Oid, ":") + strings.Join(l.Type, ":") + ":"
+	if len(l.Labelvalue.Value) != 0 {
+		s += l.Labelvalue.Value + ":"  + l.Labelvalue.Regex.String() + ":"
+		if l.Labelvalue.Invert {
+			s += "true"
+		} else {
+			s += "false"
+		}
 	}
 	return s
 }
