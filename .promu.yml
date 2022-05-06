@@ -6,7 +6,7 @@ repository:
     path: github.com/prometheus/snmp_exporter
 build:
     flags: -trimpath -a -tags netgo -mod vendor
-    ldflags: -X 'main.Version=0.20.1'
+    ldflags: -X 'main.Version=1.0.0'
 tarball:
     files:
         - snmp.yml
