@@ -24,14 +24,16 @@
 # snakeyaml generator.cisco.yml > /tmp/a
 # snmp-export-cfg generate -f /tmp/a -o /tmp/c
 # snmp-export -f /tmp/c
-#
-# curl -s "http://localhost:9116/snmp?compact&module=ifTables&target=$DST"
-# curl -s "http://localhost:9116/snmp?compact&module=cisco_35xx&target=$DST"
-# curl -s "http://localhost:9116/snmp?compact&module=cisco_n3k&target=$DST"
+ 
+# Queries:
+# curl -s "http://localhost:9116/snmp?compact&module=ifTables&target=$DSTa"
+# curl -s "http://localhost:9116/snmp?compact&module=ifTables&target=$DSTb"
+# curl -s "http://localhost:9116/snmp?compact&module=cisco_35xx&target=$DSTa"
+# curl -s "http://localhost:9116/snmp?compact&module=cisco_n3k&target=$DSTb"
 
 modules:
   global_vars:
-    prefix: &prefix snmp
+    prefix: &prefix netsw
 
   ifTable_template: # generic
     walk: &ifTable_walk
@@ -121,7 +123,25 @@ modules:
       - source_indexes: [ifIndex]
         lookup: 1.3.6.1.2.1.31.1.1.1.1 # ifName
         drop_source_indexes: true
+        mprefix: [if]
+        revalue:
+          regex: '(Eth|po|Vl)(ernet|rt-channel|an)(.*)'
+          value: '$1$3'
+        rename: nic
 
+
+  cisco_chassisModel_template:
+    overrides: &cisco_chassisModel_overrides
+      chassisModel:
+        regex_extracts:
+          '':
+            - regex: '.*'
+              value: '1'
+    lookups: &cisco_chassisModel_lookups
+      - source_indexes: []
+        mprefix: [chassisModel]
+        lookup: chassisModel
+        rename: name
 
   cpmCPUTotalTable_template: # C35xx, N3K
     walk: &cpmCPUTotalTable_walk
@@ -438,7 +458,20 @@ modules:
 
     walk:
       - chassisModel			# 1.3.6.1.4.1.9.5.1.2.16
+      - sysUpTime
+    overrides:
+      <<: *cisco_chassisModel_overrides
+      sysUpTime:
+        type: uptime
+        regex_extracts:
+          .boot_time:
+            - regex: '(.*)'
+              value: '$1'
+    lookups: *cisco_chassisModel_lookups
+
     # make snakeyaml happy
+    walk:
+      - _dummy
     lookups:
       - source_indexes: [_dummy]
         lookup: _dummy
@@ -451,10 +484,11 @@ modules:
     # N3K has no 'chassisModel', so we need to lookit up via entPhysicalClass
     walk:
       - entPhysicalClass
+      - sysUpTime
     lookups:
       - source_indexes: [entPhysicalIndex]
         lookup: entPhysicalName
-        rename: snmp_chassisModel # keep in sync with *prefix
+        rename: name # keep in sync with *prefix
         mprefix: [entPhysicalClass]
         drop_source_indexes: true
     overrides:
@@ -464,6 +498,12 @@ modules:
           .chassisModel:
             - regex: 3	# see  snmptranslate -Pu -Tp -IR entPhysicalClass
               value: 1
+      sysUpTime:
+        type: uptime
+        regex_extracts:
+          .boot_time:
+            - regex: '(.*)'
+              value: '$1'
 
     walk:
       - cpmCPUTotalTable
@@ -492,15 +532,3 @@ modules:
         lookup: _dummy
 
 
-  test:
-    prefix: *prefix
-    max_repetitions: 50
-
-    walk:
-      - _dummy
-    lookups:
-      - source_indexes: [_dummy]
-        lookup: _dummy
-    overrides:
-      _dummy:
-        ignore: true

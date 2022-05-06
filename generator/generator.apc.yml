@@ -1,0 +1,267 @@
+# This is a configuration file for the
+# https://github.com/jelmd/snmp_exporter/tree/main/generator
+# (C) 2022 by Jens Elkner (jel+snmpex@cs.uni-magdeburg.de)
+#
+# To translate it into a YAML spec conforming file, you need to pass it through
+# https://github.com/jelmd/snakeyaml - this is a modified YAML file parser,
+# which allows duplicated keys and in turn does what most normal people would
+# do: merge its contents into a single basket and throw away the now redundant
+# basket. 
+
+# Queries:
+# curl -s 'http://localhost:9116/snmp?module=surtxli_with_env&compact&target=surtxli-a'
+# no iem query -> saves a lot of time (~0.5s)
+# curl -s 'http://localhost:9116/snmp?module=surtxli_no_env&compact&target=surtxli-b'
+# curl -s 'http://localhost:9116/snmp?module=ats&compact&target=ats'
+
+modules:
+
+  global_vars:
+    prefix: &prefix apc
+
+  surtxli_template:
+    walk: &surtxli_walk
+      - sysObjectID				# 1.3.6.1.2.1.1.2
+      - sysUpTime				# 1.3.6.1.2.1.1.3
+      - snmpInPkts              # 1.3.6.1.2.1.11.1
+      - snmpOutPkts             # 1.3.6.1.2.1.11.2
+      #- upsConfigOutputVA		# 1.3.6.1.2.1.33.1.9.5 unreliable
+
+      - upsAdvInputLineFailCause #		# Last Battery Transfer
+
+      - upsBasicIdentModel
+      - upsBasicBatteryStatus
+      - upsBasicBatteryTimeOnBattery	# [100 Hz]
+
+      - upsBasicInputPhase
+      - upsBasicOutputPhase
+      - upsBasicOutputStatus
+
+      - upsHighPrecBatteryCapacity		# Capacity [%]
+      - upsHighPrecBatteryTemperature	# Internal Temperature [°cC]
+      - upsHighPrecBatteryActualVoltage	# Battery Voltage [VDC]
+
+      - upsHighPrecInputLineVoltage		# Input Voltage [VAC]
+      - upsHighPrecInputFrequency		# Input Frequency [Hz]
+# evtl. raus - bzgl. letzter 1 min
+      - upsHighPrecInputMaxLineVoltage
+      - upsHighPrecInputMinLineVoltage
+# 4a, 4b
+      - upsHighPrecInputBypassVoltage	# Bypass Input Voltage  [VAC]
+      - upsHighPrecInputBypassFrequency	# Frequency [Hz]
+
+      - upsHighPrecOutputVoltage		# Output Voltage [VAC]
+      - upsHighPrecOutputFrequency		# Frequency [Hz]
+      - upsHighPrecOutputLoad	# 1a,1b,3b,4a,4b: Apparent Load Power [% VA]
+                                        # 3a: Load Power [% W]
+      - upsHighPrecOutputCurrent		# Load Current [cA]
+
+      - upsAdvConfigRatedOutputVoltage
+      - upsAdvConfigHighTransferVolt
+      - upsAdvConfigLowTransferVolt
+
+    lookups: &surtxli_lookups
+      - source_indexes: []
+        lookup: upsBasicIdentModel
+        mprefix: [upsBasicIdentModel]
+        rename: name
+
+    overrides: &surtxli_overrides
+      sysUpTime: &sysUpTime_override
+        type: uptime
+        regex_extracts:
+          .boot_time:
+            - regex: '(.*)'
+              value: '$1'
+      sysObjectID:
+        remap: # because upsConfigOutputVA is unreliable or n/a on some NMCs
+          '1.3.6.1.4.1.318.1.3.27': 8000 # smartUPS2
+          '1.3.6.1.4.1.318.1.3.2.19': 8000 # smartUPS8000
+          '1.3.6.1.4.1.318.1.3.2.15': 10000 # smartUPS10000
+        rename:
+          - sub_oids: '.*'
+            value: apc_upsConfigOutputVA
+      upsBasicIdentModel:
+        regex_extracts:
+          '':
+            - regex: '.*'
+              value: '1'
+
+
+  surtxli_no_env: # 4b
+    prefix: *prefix
+    walk: *surtxli_walk
+    lookups: *surtxli_lookups
+    overrides:
+      <<: *surtxli_overrides
+
+  surtxli_with_env: # 4a, 3a, 3b
+    prefix: *prefix
+    walk: *surtxli_walk
+    overrides:
+      <<: *surtxli_overrides
+    lookups: *surtxli_lookups
+    walk:
+      - iemStatusProbeCurrentTemp	#  Integrated Temp.: ca. 0.5+-0.1s !!! [°cC]
+      #- iemStatusProbeCurrentHumid
+    lookups:
+      - source_indexes: [iemStatusProbeNumber]
+        lookup: _dummy
+        drop_source_indexes: true
+
+  ats_template:
+    walk: &ats_gets # tables n/a
+      - sysUpTime				# 1.3.6.1.2.1.1.3
+      - snmpInPkts              # 1.3.6.1.2.1.11.1
+      - snmpOutPkts             # 1.3.6.1.2.1.11.2
+      - atsIdentModelNumber			# AP*
+      - atsConfigPreferredSource	# SourceNum
+      - atsStatusSelectedSource		# SourceNum
+      - atsStatusRedundancyState	# [1:atsRedundancyLost,2:atsFullyRedundant]
+      - atsStatusSwitchStatus		# [1:fail, 2:ok]
+      - atsStatusSourceAStatus		# [1:fail, 2:ok]
+      - atsStatusSourceBStatus		# [1:fail, 2:ok]
+      - atsStatusPhaseSyncStatus	# [1:inSync, 2:outOfSync]
+      - atsStatusVoltageOutStatus	# [1:fail, 2:ok]
+      - atsStatusHardwareStatus		# [1:fail, 2:ok]
+
+    walk: &ats_walk
+      # atsInputTable
+      - atsInputFrequency			# [Hz]
+      # atsInputPhaseTable
+      - atsInputVoltage				# [VAC]
+      # atsOutputTable
+      - atsOutputFrequency			# [Hz]
+      # atsOutputPhaseTable
+      - atsOutputVoltage			# [V]
+      - atsOutputCurrent			# [cA]
+      - atsOutputLoad				# [VA]
+      - atsOutputPower				# [W]
+      - atsOutputPercentLoad		# [%]
+      - atsOutputPercentPower		# [%]
+      - atsOutputPhaseState			# [1:normal,2:lowload,3:nearoverld,4:overld]
+
+    lookups: &ats_lookups
+      - source_indexes: [atsInputTableIndex]
+        lookup: atsInputName
+        mprefix: [atsInputFreq]
+        rename: source
+        revalue:
+          regex: 'Source ([AB])'
+          value: '$1'
+      - source_indexes: [atsInputPhaseTableIndex]
+        lookup: atsInputName
+        mprefix: [atsInputVolt]
+        rename: source
+        revalue:
+          regex: 'Source ([AB])'
+          value: '$1'
+      - source_indexes: [atsOutputPhaseTableIndex]
+        lookup: _dummy
+        mprefix: [atsOutput]
+        drop_source_indexes: true
+      - source_indexes: []
+        lookup: atsIdentModelNumber
+        mprefix: [atsIdentModelNumber]
+        rename: name
+
+    overrides: &ats_overrides
+      sysUpTime:
+        <<: *sysUpTime_override
+      # atsInputTable
+      atsInputCurrent:
+        ignore: true
+      atsInputName:
+        ignore: true
+      atsInputTableIndex:
+        ignore: true
+      atsInputType:
+        ignore: true
+      atsInputVoltageOrientation:
+        ignore: true
+      atsNumInputPhases:
+        ignore: true
+      # atsInputPhaseTable
+      atsInputMaxCurrent:
+        ignore: true
+      atsInputMaxPower:
+        ignore: true
+      atsInputMaxVoltage:
+        ignore: true
+      atsInputMinCurrent:
+        ignore: true
+      atsInputMinPower:
+        ignore: true
+      atsInputMinVoltage:
+        ignore: true
+      atsInputPhaseIndex:
+        ignore: true
+      atsInputPhaseTableIndex:
+        ignore: true
+      atsInputPower:
+        ignore: true
+      # atsOutputTable
+      atsOutputTableIndex:
+        ignore: true
+      atsNumOutputPhases:
+        ignore: true
+      atsOutputVoltageOrientation:
+        ignore: true
+      # atsOutputPhaseTable
+      atsOutputPhaseTableIndex:
+        ignore: true
+      atsOutputPhaseIndex:
+        ignore: true
+      atsOutputMaxCurrent:
+        ignore: true
+      atsOutputMinCurrent:
+        ignore: true
+      atsOutputMaxLoad:
+        ignore: true
+      atsOutputMinLoad:
+        ignore: true
+      atsOutputMaxPercentLoad:
+        ignore: true
+      atsOutputMinPercentLoad:
+        ignore: true
+      atsOutputMaxPower:
+        ignore: true
+      atsOutputMinPower:
+        ignore: true
+      atsOutputMaxPercentPower:
+        ignore: true
+      atsOutputMinPercentPower:
+        ignore: true
+      # drop n/a stats
+      atsOutputLoad:
+        remap:
+          '-1': '@drop@'
+      atsOutputPercentLoad:
+        remap:
+          '-1': '@drop@'
+      # normalize Load
+      atsOutputCurrent:
+        regex_extracts:
+          '':
+            - regex: '([0-9])*([0-9])'
+              value: '$1.$2'
+      atsIdentModelNumber:
+        regex_extracts:
+          '':
+            - regex: '.*'
+              value: '1'
+
+  # ATS snmp is awefully slow, so pull intervall should be min. 2s, better 3+s
+  ats:
+    prefix: *prefix
+    walk: *ats_gets 
+    walk: #*ats_walk
+      - atsInputTable
+      - atsInputPhaseTable
+      - atsOutputTable
+      - atsOutputPhaseTable
+    lookups: *ats_lookups
+    overrides:
+      <<: *ats_overrides
+    walk:
+      - _dummy

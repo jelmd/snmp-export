@@ -1,0 +1,1934 @@
+# This is a configuration file for the
+# https://github.com/jelmd/snmp_exporter/tree/main/generator
+# (C) 2022 by Jens Elkner (jel+snmpex@cs.uni-magdeburg.de)
+
+# To translate it into a YAML spec conforming file, you need to pass it through
+# https://github.com/jelmd/snakeyaml - this is a modified YAML file parser,
+# which allows duplicated keys and in turn does what most normal people would
+# do: merge its contents into a single basket and throw away the now redundant
+# basket. 
+
+# Queries:
+# curl -s 'http://localhost:9116/snmp?module=lcpII&compact&target=l'
+# curl -s 'http://localhost:9116/snmp?module=lcpIIIa&compact&target=l3a'
+# curl -s 'http://localhost:9116/snmp?module=lcpIIIa&compact&target=l4a'
+# curl -s 'http://localhost:9116/snmp?module=lcpIIIb_V3&compact&target=l3b'
+# curl -s 'http://localhost:9116/snmp?module=lcpIIIb_V4&compact&target=l4b'
+# curl -s 'http://localhost:9116/snmp?module=pdu_managed&compact&target=pa'
+# curl -s 'http://localhost:9116/snmp?module=pdu_managed&compact&target=pb'
+# curl -s 'http://localhost:9116/snmp?module=pdu_socket_desc&compact&target=pa'
+# curl -s 'http://localhost:9116/snmp?module=pdu_socket_desc&compact&target=pb'
+
+
+# CMC  .. Computer Multi Control
+# TC   .. Top Concept
+# PU   .. Processing Unit 
+# PUC  .. Processing Unit Compact
+# WL   .. Wireless LAN
+# DMC  .. Door Management Controller
+# LEAK .. Leakage
+# HUM  .. Humidity
+# PDU  .. Power Distribution Unit
+
+modules:
+
+  global_vars:
+    prefix: &prefix snmp
+
+
+  # LCP CMC II V2.62. Dropped later (V2.95) because some SW triggered alarms
+  #                   when load was >= 90% for short times. =8-( So, welcome
+  #                   dear hackers - no one will notice any abuse of those
+  #                   boxes anymore.
+  systats_template:
+    walk: &systats_walk
+      - memAvailReal
+      - memCached
+      #- memMinimumSwap
+      - memTotalFree
+      - memTotalReal
+      - ssCpuIdle
+      - ssCpuSystem
+      - ssCpuUser
+      - laLoadFloat
+
+    lookups: &systats_lookups
+      - source_indexes: [laIndex]
+        mprefix: [laLoad]
+        lookup: laNames
+        rename: min
+        revalue:
+          regex: '[^0-9]+([0-9]+).*'
+          value: '$1'
+        #drop_source_indexes: true
+
+    overrides: &systats_overrides
+      laConfig:
+         ignore: true
+      laErrorFlag:
+         ignore: true
+      laErrMessage:
+         ignore: true
+      laIndex:
+         ignore: true
+      laLoad:
+         ignore: true
+      laLoadInt:
+         ignore: true
+      laNames:
+         ignore: true
+      memAvailSwap:
+         ignore: true
+      memBuffer:
+         ignore: true
+      memErrorName:
+         ignore: true
+      memIndex:
+         ignore: true
+      memMinimumSwap:
+         ignore: true
+      memShared:
+         ignore: true
+      memSwapError:
+         ignore: true
+      memSwapErrorMsg:
+         ignore: true
+      memTotalSwap:
+         ignore: true
+      ssCpuRawIdle:
+         ignore: true
+      ssCpuRawNice:
+         ignore: true
+      ssCpuRawSystem:
+         ignore: true
+      ssCpuRawUser:
+         ignore: true
+      ssErrorName:
+         ignore: true
+      ssIOReceive:
+         ignore: true
+      ssIOSent:
+         ignore: true
+      ssIndex:
+         ignore: true
+      ssSwapIn:
+         ignore: true
+      ssSwapOut:
+         ignore: true
+      ssSysContext:
+         ignore: true
+      ssSysInterrupts:
+         ignore: true
+      laLoadFloat:
+        regex_extracts:
+          ^lcp_load_pct:
+            - regex: '(.*)'
+              value: '$1'
+      memTotalReal:
+        regex_extracts:
+          ^lcp_memory_total_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+      memAvailReal:
+        regex_extracts:
+          ^lcp_memory_avail_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+      memCached:
+        regex_extracts:
+          ^lcp_memory_cached_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+      memTotalFree:
+        regex_extracts:
+          ^lcp_memory_free_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+      ssCpuIdle:
+        regex_extracts:
+          ^lcp_cputime_idle:
+            - regex: '(.*)'
+              value: '$1'
+      ssCpuSystem:
+        regex_extracts:
+          ^lcp_cputime_system:
+            - regex: '(.*)'
+              value: '$1'
+      ssCpuUser:
+        regex_extracts:
+          ^lcp_cputime_user:
+            - regex: '(.*)'
+              value: '$1'
+
+  cmcTcUnit1SensorTable_template:
+    walk: &cmcTcUnit1SensorTable_walk
+      - unit1SensorValue					# 1.3.6.1.4.1.2606.4.2.3.5.2.1.5
+      # ca. max. 20 ms - no need for a separate target
+      - cmcTcUnit1Status					# 1.3.6.1.4.1.2606.4.2.3.4
+      - 1.3.6.1.4.1.2606.4.2.3.6.2.1.5.1	# unit1OutputValue.1
+      - 1.3.6.1.4.1.2606.4.2.3.5.2.1.6.1	# unit1SensorSetHigh.1
+      - 1.3.6.1.4.1.2606.4.2.3.5.2.1.7.1	# unit1SensorSetLow.1
+      - 1.3.6.1.4.1.2606.4.2.3.5.2.1.8.1	# unit1SensorSetWarn.1
+    lookups: &cmcTcUnit1SensorTable_lookups
+      - source_indexes: [unit1SensorIndex]
+        #lookup: unit1SensorText
+        lookup: unit1SensorIndex			# 1.3.6.1.4.1.2606.4.2.3.5.2.1.1
+        mprefix: [ unit1SensorV ]
+        rename: sensor
+        revalue:
+          regex: '3|4|1[12]|19|2[089]|3[0-9]'
+          value: '@drop@' #					 # drop non-unique/useless entries
+        remap:
+          '1': pu_extern		# °C
+          '2': '' #				# W
+          '5': top_1			# rpm
+          '6': top_2			# rpm
+          '7': middle_1			# rpm
+          '8': middle_2			# rpm
+          '9': bottom_1			# rpm
+          '10': bottom_2		# rpm
+          '13': air_top_in		# °C
+          '14': air_top_out		# °C
+          '15': air_middle_in	# °C
+          '16': air_middle_out	# °C
+          '17': air_bottom_in	# °C
+          '18': air_bottom_out	# °C
+          '21': air_average_in	# °C
+          '22': air_average_out	# °C
+          '23': water_in		# °C
+          '24': water_out		# °C
+          '25': '' #			# l/min
+          '26': '' #			# 4..0
+          '27': '' #			# % =
+          '28': lcp 			# shows bullshit like 151 
+          '29': water_delta		# °C/10 - redundant
+          '33': '' #			# scheint ein zykl. 60s countdown zu sein
+        #drop_source_indexes: true
+      - source_indexes: [] #		# inject unit name label
+        mprefix: [cmcTcUnit1Status]
+        lookup: cmcTcUnit1Text
+        rename: name
+        revalue:
+          regex: '.*'
+          value: 'RLCP' #		# cmcTcUnit1Text is buggy - sometimes binary
+      # thresholds
+      - source_indexes: []
+        mprefix: [unit1OutputValue]
+        lookup: unit1SensorIndex
+        rename: sensor
+        revalue:
+          regex: '.*'
+          value: 'air_in'
+      - source_indexes: []
+        mprefix: [unit1OutputValue]
+        lookup: unit1SensorIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'setpoint'
+      - source_indexes: []
+        mprefix: [ unit1SensorSetWarn, unit1SensorSetLow ]
+        lookup: unit1SensorIndex
+        rename: state
+        revalue:
+          regex: '.*'
+          value: 'nc'
+        #drop_source_indexes: true
+      - source_indexes: []
+        mprefix: [ unit1SensorSetHigh ]
+        lookup: unit1SensorIndex
+        rename: state
+        revalue:
+          regex: '.*'
+          value: 'cr'
+      - source_indexes: []
+        mprefix: [ unit1SensorSetWarn, unit1SensorSetHigh ]
+        lookup: unit1SensorIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'upper'
+      - source_indexes: []
+        mprefix: [ unit1SensorSetLow ]
+        lookup: unit1SensorIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'lower'
+      - source_indexes: [unit1SensorIndex]
+        mprefix: [ unit1SensorSet ]
+        lookup: unit1SensorIndex
+        rename: sensor
+        remap:
+          '1': 'lcp'
+        #drop_source_indexes: true
+    overrides: &cmcTcUnit1SensorTable_overrides
+      unit1SensorIndex:
+        ignore: true
+      unit1SensorType:
+        ignore: true
+      unit1SensorText:
+        ignore: true
+      unit1SensorHysteresis:
+        ignore: true
+      unit1SensorDisplayFactor:
+        ignore: true
+      unit1SensorScaleStart:
+        ignore: true
+      unit1SensorScaleEnd:
+        ignore: true
+      unit1SensorStatus:
+        ignore: true
+      unit1SensorUnit:
+        ignore: true
+      unit1SensorInfo:
+        ignore: true
+      unit1OutputValue:
+        rename:
+          - value: lcp_threshold_C
+            sub_oids: 1.0
+      unit1SensorSetHigh:
+        regex_extracts:
+          '':
+            - regex: '0'
+              value: '@drop@'
+            - regex: '(.*)'
+              value: '$1'
+        rename:
+          - value: lcp_threshold_C
+            sub_oids: '.*'
+      unit1SensorSetLow:
+        regex_extracts:
+          '':
+            - regex: '0'
+              value: '@drop@'
+            - regex: '(.*)'
+              value: '$1'
+        rename:
+          - value: lcp_threshold_C
+            sub_oids: .*
+      unit1SensorSetWarn:
+        regex_extracts:
+          '':
+            - regex: '0'
+              value: '@drop@'
+            - regex: '(.*)'
+              value: '$1'
+        rename:
+          - value: lcp_threshold_C
+            sub_oids: .*
+      unit1SensorValue:
+        rename:
+          - value: lcp_fan_pct
+            sub_oids: '[5-9]|10'
+          - value: lcp_temperature_C
+            sub_oids: '1|1[3-8]|2[1-49]'
+          - value: lcp_flow_rate_lpm
+            sub_oids: 25
+          - value: lcp_cooling_capacity_W
+            sub_oids: 2
+          - value: lcp_fan_stage
+            sub_oids: 26
+          - value: lcp_valve_pct
+            sub_oids: 27
+          - value: lcp_condensate_cycles
+            sub_oids: 33
+        regex_extracts:
+          '':
+            # Lüfter-Drehzahlen auf % umswitchen - eigentlich reicht Lüfterstufe
+            # Geht, da wir keine anderen Werte in dem Bereich 700..1999 haben.
+            - regex: '[7-9][0-9][0-9]' #		#  810..870		Stufe 1
+              value: '45'
+            - regex: '1[0-2][0-9][0-9]' #		# 1130..1210	Stufe 2
+              value: '65'
+            - regex: '1[3-5][0-9][0-9]' #		# 1410..1500	Stufe 3
+              value: '80'
+            - regex: '1[7-9][0-9][0-9]' #		# 1780..1880	Stufe 4
+              value: '100'
+            - regex: '(.*)'
+              value: '$1'
+      cmcTcUnit1Status:
+        regex_extracts:
+          ^lcp_status_device:
+            - regex: '(.*)'
+              value: '$1'
+        remap: &cmcTcUnit1Status_map # to cmcIIIDevStatus
+          '1': '2' #  ok		OK
+          '2': '6' #  error		Error, e. g. value overflow
+          '3': '23' # changed	Device config changed, confirmation required
+          '4': '24' # quit 		Quit from device to confirm config changes
+          '5': '25' # timeout	Device timeout, confirm to unload this unit
+          '6': '3' #  detected	Device detected, needs to be confirmed
+          '7': '1' #  notAvail	Device not available
+          '8': '26' # lowPower	Supply voltage is too low
+          '9': '8' #  fwUpgrade	Firmware upgrade running
+          #    '4' #  lost		Device lost (disconnect), confirmation required
+          #    '5' #  changed	Device changed
+          #    '7' #  fwUpdate	Firmware Update pending
+
+  cmcTcUnit2SensorTable_template:
+    walk: &cmcTcUnit2SensorTable_walk
+      - cmcTcUnit2Status					# CMC-TC-IOU
+      #- unit2SensorStatus			 		# 1.3.6.1.4.1.2606.4.2.4.5.2.1.4
+      - 1.3.6.1.4.1.2606.4.2.4.6.2.1.4.1	#	Tuermagnet
+      - 1.3.6.1.4.1.2606.4.2.4.5.2.1.4.2	#	Zugangs Sensor
+    lookups: &cmcTcUnit2SensorTable_lookups
+      - source_indexes: [] #				# inject unit name label
+        mprefix: [cmcTcUnit2Status]
+        lookup: cmcTcUnit2Text
+        rename: name
+      - source_indexes: [unit2SensorIndex] ## extract device names
+        lookup: unit2MsgText
+        mprefix: [ unit2Sensor ]
+        rename: name
+        revalue:
+          regex: '.*not available.*' #		#	drop non-unique/useless entries
+          value: '@drop@'
+      - source_indexes: [unit2OutputIndex]
+        lookup: unit2MsgText
+        mprefix: [unit2Output]
+        rename: name
+        revalue:
+          regex: '.*not available.*' #		#	drop non-unique/useless entries
+          value: '@drop@'
+        #drop_source_indexes: true
+    overrides: &cmcTcUnit2SensorTable_overrides
+      unit2SensorDisplayFactor:
+        ignore: true
+      unit2SensorHysteresis:
+        ignore: true
+      unit2SensorIndex:
+        ignore: true
+      unit2SensorInfo:
+        ignore: true
+      unit2SensorScaleStart:
+        ignore: true
+      unit2SensorScaleEnd:
+        ignore: true
+      unit2SensorSetHigh:
+        ignore: true
+      unit2SensorSetLow:
+        ignore: true
+      unit2SensorSetWarn:
+        ignore: true
+      unit2SensorText:
+        ignore: true
+      unit2SensorType:
+        ignore: true
+      unit2SensorUnit:
+        ignore: true
+      unit2SensorValue:
+        ignore: true
+      unit2SensorStatus: #					 # zugang
+        regex_extracts:
+          ^lcp_status_sensor:
+            - regex: '(.*)'
+              value: '$1'
+        # unit2SensorStatus:
+        #	notAvail(1), lost(2), changed(3), ok(4), off(5), on(6),
+        #   warning(7), tooLow(8), tooHigh(9), error(10)
+      unit2OutputStatus: # magnet
+        regex_extracts:
+          ^lcp_status_sensor:
+            - regex: '(.*)'
+              value: '$1'
+        remap: #								# map to unit2SensorStatus
+          '7': '11'
+          '8': '12'
+        # unit2OutputStatus:
+        #	notAvail(1), lost(2), changed(3), ok(4), off(5), on(6),
+        #   setOff(7), setOn(8)
+      cmcTcUnit2Status: # iou
+        regex_extracts:
+          ^lcp_status_device:
+            - regex: '(.*)'
+              value: '$1'
+        remap:
+          <<: *cmcTcUnit1Status_map
+
+  lcpII:
+    max_repetitions: 50
+    version: 1					# Alte LCPs von vor 2010 (können nur SNMP v1):
+    prefix: *prefix
+
+    # Im mib-2 tree gibt's nich wirklich relevantes (Nettraffic ist gering).
+    # Und seit V2.95 gibt's auch keine sysstats mehr. Ergo lassen wir die weg.
+#   walk: *systats_walk
+#   #walk: [memory, laTable, systemStats]
+#   overrides:
+#     <<: *systats_overrides
+#   lookups: *systats_lookups
+    walk:
+      - sysUpTime
+    overrides:
+      sysUpTime:
+        type: uptime
+        regex_extracts:
+          ^lcp_boot_time:
+            - regex: '(.*)'
+              value: '$1'
+
+    walk: *cmcTcUnit1SensorTable_walk
+    #walk: [unit1SensorValue, unit1SensorSetHigh, unit1SensorSetLow, unit1SensorSetWarn]
+    overrides:
+      <<: *cmcTcUnit1SensorTable_overrides
+    lookups: *cmcTcUnit1SensorTable_lookups
+
+    walk: *cmcTcUnit2SensorTable_walk
+    #walk: [ cmcTcUnit2SensorTable ]
+    overrides:
+      <<: *cmcTcUnit2SensorTable_overrides
+    lookups: *cmcTcUnit2SensorTable_lookups
+
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+        drop_source_indexes: true
+
+
+  cmcIIIa_entPhySensorValue_template:
+    # this is usually the main LCP and fan control unit
+    walk: &cmcIIIa_entPhySensorValue_walk
+      - entPhySensorValue # 						# 1.3.6.1.2.1.99.1.1.1.4
+    lookups: &cmcIIIa_entPhySensorValue_lookups
+      - source_indexes: [entPhysicalIndex]
+        #drop_source_indexes: true
+        mprefix: [entPhySensorValue]
+        lookup: entPhysicalDescr
+        rename: sensor
+        revalue:
+          regex: '(Login|Memory|System.[CVS]).*|.*Duration'
+          value: '@drop@'
+        remap:
+# PU misc
+           'Temperature.Value': pu_extern #						# 1001
+           'System.Temperature.Value': pu_intern #				# 1008
+#		true(1) | false(2)
+           'Access.Value': Zugangssensor #						# 1002
+           'Input 1.Value': pu_input_1 #						# 1003
+           'Input 2.Value': pu_input_2 #						# 1004
+# Temperatur in °C/1000
+           'Air.Temperature.In-Bot': air_bottom_in #			# 3001..3006
+           'Air.Temperature.In-Mid': air_middle_in
+           'Air.Temperature.In-Top': air_top_in
+           'Air.Temperature.Out-Bot': air_bottom_out
+           'Air.Temperature.Out-Mid': air_middle_out
+           'Air.Temperature.Out-Top': air_top_out
+           'Air.Server-In.Average': air_average_in #			# 3007
+           'Air.Server-Out.Average': air_average_out #			# 3008
+# Drehzahl in %
+           'Air.Fans.Fan1.Rpm': top_1 #							# 3009..3014
+           'Air.Fans.Fan2.Rpm': top_2
+           'Air.Fans.Fan3.Rpm': middle_3
+           'Air.Fans.Fan4.Rpm': middle_4
+           'Air.Fans.Fan5.Rpm': bottom_5
+           'Air.Fans.Fan6.Rpm': bottom_6
+# Vorlauf in °C/1000
+           'Water.In-Temperature.Value': water_in #				# 3015
+# Rücklauf in °C/1000
+           'Water.Out-Temperature.Value': water_out #			# 3016
+# Durchfluß in l/10min
+           'Water.Flowrate.Value': '' #	drop label				# 3017
+# Regelventil in %
+           'Water.Control-Valve.ActualValue': '' # drop label	# 3018
+# Kühlkapazität in W
+           'Water.Cooling Capacity.Value': '' # drop label		# 3019
+# Leckage - true(1) | false(2)
+           'Water.Leakage Sensor.Input': leakage #				# 3020
+# Kondensat
+#		true(1) | false(2)
+           'Water.Condensate Sensor.Input': condensate_input #	# 3021
+           'Water.Condensate Sensor.Pump': condensate_pump #	# 3022
+# 		cycles
+           'Water.Condensate Sensor.Cycles': '' # drop label	# 3023
+    overrides: &cmcIIIa_entPhySensorValue_overrides
+      entPhySensorValue:
+        rename:
+          - value: lcp_fan_pct
+            sub_oids: '3009|301[0-4]'
+          - value: lcp_temperature_C
+            sub_oids: '100[18]|300[1-8]|301[56]'
+          - value: lcp_flow_rate_lpm
+            sub_oids: 3017
+          - value: lcp_cooling_capacity_W
+            sub_oids: 3019
+          - value: lcp_valve_pct
+            sub_oids: 3018
+          - value: lcp_condensate_cycles
+            sub_oids: 3023
+          - value: lcp_status_bool
+            sub_oids: '100[234]|302[012]'
+        regex_extracts:
+          '':
+            # Durchfluß zu l/min
+            - regex: '([0-9]*)([0-9])'
+              value: '$1.$2'
+              sub_oids: 3017
+            # Normalisieren Temperatur - geht, da wir keine Werte haben, die
+            # sonst mit '00' enden.
+            - regex: '([0-9]*)([0-9])00'
+              value: '$1.$2'
+            - regex: '(.*)'
+              value: '$1'
+
+
+  cmcIIIa_VarValueInt_template:
+    # cmcIIIVarTable # 1.3.6.1.4.1.2606.7.4.2.2
+    walk: &cmcIIIa_VarValueInt_walk #		# 1.3.6.1.4.1.2606.7.4.2.2.1.11
+      # temperature thresholds
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.1.4	# cmcIIIVarValueInt.1.4 - 1.7
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.1.5
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.1.6
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.1.7
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.16 #	# cmcIIIVarValueInt[2][16]
+                                                # setPoint
+    lookups: &cmcIIIa_VarValueInt_lookups
+      - source_indexes: []
+        #drop_source_indexes: true
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'lower'
+        sub_oids: '1\.[67]'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: state
+        revalue:
+          regex: '.*'
+          value: 'nc'
+        sub_oids: '1\.[56]'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: state
+        revalue:
+          regex: '.*'
+          value: 'cr'
+        sub_oids: '1\.[47]'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'upper'
+        sub_oids: '1\.[45]'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: sensor
+        revalue:
+          regex: '.*'
+          value: 'lcp'
+        sub_oids: '1\.[4567]'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: sensor
+        revalue:
+          regex: '.*'
+          value: 'air_in'
+        sub_oids: '2\.16'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'setpoint'
+        sub_oids: '2\.16'
+    overrides: &cmcIIIa_VarValueInt_overrides
+      cmcIIIVarValueInt:
+        regex_extracts:
+          ^lcp_threshold_C:
+            # SetPoint in °C
+            - regex: '([0-9]*)([0-9])'
+              value: '$1.$2'
+              sub_oids: '2.16'
+            - regex: '([0-9]*)([0-9][0-9])'
+              value: '$1.$2'
+
+
+  cmcIIIb_V3_entPhySensorValue_template:
+    walk: &cmcIIIb_V3_entPhySensorValue_walk
+      - entPhySensorValue # 						# 1.3.6.1.2.1.99.1.1.1.4
+    lookups: &cmcIIIb_V3_entPhySensorValue_lookups
+      - source_indexes: [entPhysicalIndex]
+        #drop_source_indexes: true
+        mprefix: [entPhySensorValue]
+        lookup: entPhysicalDescr
+        rename: sensor
+        revalue:
+          regex: '(Login|Memory|System.[CVS]).*|.*Duration'
+          value: '@drop@'
+        remap: &cmcIIIb_V3_entPhySensorValue_remap
+           'System.Temperature.Value': pu_intern
+           'Access.Value': Zugangssensor
+           'Input 1.Value': pu_input_1
+           'Input 2.Value': pu_input_2
+           'Humidity.Value': '' # drop label
+           'Dew Point.Value': dew_point
+           'Door Opening.Automatic.Temperature.Value': '@drop@' #same as x001
+           'Door Opening.Automatic.Input Alarm.Value': alarm_door
+           # 2 .. Ein, 1 .. Aus
+           'Door Opening.Manual Front.Input Access.Value': front_door_open
+           'Door Opening.Manual Rear.Input Access.Value': rear_door_open
+        sub_oid_remap:
+           '1001;Temperature.Value': pu_extern
+           '2001;Temperature.Value': dcm_extern
+           '102001;Temperature.Value': humidity
+    overrides: &cmcIIIb_V3_entPhySensorValue_overrides
+      entPhySensorValue:
+        rename:
+          - value: lcp_humidity_pct
+            sub_oids: 102002
+          - value: lcp_temperature_C
+            sub_oids: '.*1|1008|102003'
+          - value: lcp_threshold_C
+            sub_oids: '2002'
+          - value: lcp_status_bool
+            sub_oids: '100[234]|200[345]'
+        regex_extracts:
+          '':
+            # Normalisieren Temperatur - geht, da wir keine Werte haben, die
+            # sonst mit '00' enden.
+            - regex: '([0-9]*)([0-9])00'
+              value: '$1.$2'
+            - regex: '(.*)'
+              value: '$1'
+ 
+
+  cmcIIIb_V4_entPhySensorValue_template:
+    walk: &cmcIIIb_V4_entPhySensorValue_walk
+      - entPhySensorValue # 						# 1.3.6.1.2.1.99.1.1.1.4
+    lookups: &cmcIIIb_V4_entPhySensorValue_lookups
+      - source_indexes: [entPhysicalIndex]
+        #drop_source_indexes: true
+        mprefix: [entPhySensorValue]
+        lookup: entPhysicalDescr
+        rename: sensor
+        revalue:
+          regex: '(Login|Memory|System.[CVS]).*|.*Duration'
+          value: '@drop@'
+        remap:
+          <<: *cmcIIIb_V3_entPhySensorValue_remap
+        sub_oid_remap:
+           '1001;Temperature.Value': pu_extern
+           '101001;Temperature.Value': dcm_extern
+           '2001;Temperature.Value': humidity
+    overrides: &cmcIIIb_V4_entPhySensorValue_overrides
+      entPhySensorValue:
+        rename:
+          - value: lcp_humidity_pct
+            sub_oids: 2002
+          - value: lcp_temperature_C
+            sub_oids: '.*1|1008|2003'
+          - value: lcp_threshold_C
+            sub_oids: '101002'
+          - value: lcp_status_bool
+            sub_oids: '100[234]|10100[345]'
+        regex_extracts:
+          '':
+            # Normalisieren Temperatur - geht, da wir keine Werte haben, die
+            # sonst mit '00' enden.
+            - regex: '([0-9]*)([0-9])00'
+              value: '$1.$2'
+            - regex: '(.*)'
+              value: '$1'
+
+
+  cmcIIIb_VarValueInt_template:
+    walk: &cmcIIIb_VarValueInt_walk #		# 1.3.6.1.4.1.2606.7.4.2.2.1.11
+                                            # see also: cmcIIIMsgStatus
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.1.32 # Alarm status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.13 # DCM upper critical temp - door open
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.25 # Automatic Alarm Status 
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.42 # Supply Magnet Status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.45 # Supply Motor Status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.49 # Front Door Magnet Status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.53 # Front Door Motor Status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.57 # Rear Door Magnet Status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.2.61 # Rear Door Motor Status
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.11.4.4  # Leakage Status
+    lookups: &cmcIIIb_VarValueInt_lookups
+      - source_indexes: []
+        #drop_source_indexes: true
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: bounds
+        revalue:
+          regex: '.*'
+          value: 'upper'
+        sub_oids: '2.13'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: state
+        revalue:
+          regex: '.*'
+          value: 'cr'
+        sub_oids: '2.13'
+      - source_indexes: []
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarDeviceIndex
+        rename: sensor
+        revalue:
+          regex: '.*'
+          value: 'dmc_extern'
+        sub_oids: '2.13'
+      - source_indexes: [cmcIIIVarDeviceIndex, cmcIIIVarIndex]
+        mprefix: [cmcIIIVar]
+        lookup: cmcIIIVarName
+        rename: name
+        remap:
+          'Output.Status': pu_alarm
+          'Door Opening.Automatic.Alarm.Status': dcm_alarm
+          'Door Opening.Supply.Magnet.Status': dcm_supply_magnet
+          'Door Opening.Supply.Motor.Status': dcm_supply_motor
+          'Door Opening.Front Door.Magnet.Status': dcm_front_door_magnet
+          'Door Opening.Front Door.Motor.Status': dcm_front_door_motor
+          'Door Opening.Rear Door.Magnet.Status': dcm_rear_door_magnet
+          'Door Opening.Rear Door.Motor.Status': dcm_rear_door_motor
+          'Leakage.Status': leakage
+          'Door Opening.Automatic.Temperature.SetPtHighAlarm': '' # drop
+    overrides: &cmcIIIb_VarValueInt_overrides
+      cmcIIIVarValueInt:
+        regex_extracts:
+          ^lcp_threshold_C:
+            - regex: '([0-9]*)([0-9][0-9])'
+              value: '$1.$2'
+              sub_oids: 2.13
+          ^lcp_status_msg:
+            - regex: '(.*)'
+              value: '$1'
+              sub_oids: '1.32|2.[2-9][0-9]|4.4'
+
+
+  cmcIIIDevTable_template:
+    walk: &cmcIIIDevTable_walk
+      - cmcIIIDevStatus
+    lookups: &cmcIIIDevTable_lookups
+      - source_indexes: [cmcIIIDevIndex]
+        mprefix: [ cmcIIIDev ]
+        lookup: cmcIIIDevName
+        rename: name
+    overrides: &cmcIIIDevTable_overrides
+      cmcIIIDevName:
+        ignore: true
+      cmcIIIDevAlias:
+        ignore: true
+      cmcIIIDevType:
+        ignore: true
+      cmcIIIDevNodeID:
+        ignore: true
+      cmcIIIDevArtNr:
+        ignore: true
+      cmcIIIDevLocation:
+        ignore: true
+      cmcIIIDevBus:
+        ignore: true
+      cmcIIIDevPos:
+        ignore: true
+      cmcIIIDevFW:
+        ignore: true
+      cmcIIIDevHW:
+        ignore: true
+      cmcIIIDevSerial:
+        ignore: true
+      cmcIIIDevProductWeek:
+        ignore: true
+      cmcIIIDevLastChange:
+        ignore: true
+      cmcIIIDevURL:
+        ignore: true
+      cmcIIIDevNumberOfVars:
+        ignore: true
+      cmcIIIDevNumberOfMsgs:
+        ignore: true
+      cmcIIIDevStatusText:
+        ignore: true
+      cmcIIIDevCurrentMinConsumption:
+        ignore: true
+      cmcIIIDevCurrentMaxConsumption:
+        ignore: true
+      cmcIIIDevEntPhysicalIndex:
+        ignore: true
+      cmcIIIDevAssembly:
+        ignore: true
+      cmcIIIDevStatus:
+        rename:
+          - value: lcp_status_device
+            sub_oids: '.*'
+
+
+  cmcIIIUnitLoad_template:
+    walk: &cmcIIIUnitLoad_walk
+      - cmcIIIUnitLoadTable
+    lookups: &cmcIIIUnitLoad_lookups
+      - source_indexes: [cmcIIIUnitLoadIndex]
+        mprefix: [cmcIIIUnitLoad]
+        lookup: cmcIIIUnitLoadIndex
+        rename: min
+    overrides: &cmcIIIUnitLoad_overrides
+      cmcIIIUnitLoadAverage:
+        regex_extracts: # Rittal crap uses a % number -> normalize: 100% == 1.0
+          ^lcp_load:
+            - regex: '([0-9]*)([0-9][0-9])|([0-9])'
+              value: '$1.$2$3'
+
+
+  cmcIIIHr_template:
+    walk: &cmcIIIHr_walk
+      - hrStorageSize		# in kBytes
+      - hrStorageUsed		# in kBytes
+      #- hrProcessorLoad	# 1 min utilization
+    lookups: &cmcIIIHr_lookups
+      - source_indexes: [hrStorageIndex]
+        mprefix: [hrStorageSize]
+        lookup: hrStorageDescr
+        rename: total
+        revalue:
+          regex: '(/|Cached|Memory|Shared|Swap|Virtual).*'
+          value: '@drop@'
+        remap:
+          'Physical memory': physical
+      - source_indexes: [hrStorageIndex]
+        mprefix: [hrStorageUsed]
+        lookup: hrStorageDescr
+        rename: used
+        revalue:
+          regex: '(/|Swap).*'
+          value: '@drop@'
+        remap:
+          'Cached memory': cache
+          'Memory buffers': buffer
+          'Physical memory': physical
+          'Shared memory': shared
+          'Virtual memory': virtual
+      - source_indexes: [hrDeviceIndex]
+        lookup: _dummy
+        mprefix: [hrProc]
+    overrides: &cmcIIIHr_overrides
+      hrStorageSize:
+        regex_extracts:
+          ^lcp_memory_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+      hrStorageUsed:
+        regex_extracts:
+          ^lcp_memory_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+
+  sysuptime_template:
+    walk: &sysuptime_walk
+      - sysUpTime
+    overrides: &sysuptime_overrides
+      sysUpTime:
+        type: uptime
+        regex_extracts:
+          ^lcp_boot_time:
+            - regex: '(.*)'
+              value: '$1'
+
+  lcpIIIa:
+    max_repetitions: 50
+    version: 2
+    prefix: *prefix
+
+    walk: *cmcIIIa_entPhySensorValue_walk
+    overrides:
+      <<: *cmcIIIa_entPhySensorValue_overrides
+    lookups: *cmcIIIa_entPhySensorValue_lookups
+
+    walk: *cmcIIIa_VarValueInt_walk
+    overrides:
+      <<: *cmcIIIa_VarValueInt_overrides
+    lookups: *cmcIIIa_VarValueInt_lookups
+
+    walk: #*cmcIIIDevTable_walk
+      - cmcIIIDevTable
+    overrides:
+      <<: *cmcIIIDevTable_overrides
+    lookups: *cmcIIIDevTable_lookups
+
+    walk: #*cmcIIIUnitLoad_walk
+      - cmcIIIUnitLoadTable
+    overrides:
+      <<: *cmcIIIUnitLoad_overrides
+    lookups: *cmcIIIUnitLoad_lookups
+
+    walk: *cmcIIIHr_walk
+    overrides:
+      <<: *cmcIIIHr_overrides
+    lookups: *cmcIIIHr_lookups
+
+    walk: *sysuptime_walk
+    overrides:
+      <<: *sysuptime_overrides
+
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+        drop_source_indexes: true
+
+
+  lcpIIIb_V3:
+    max_repetitions: 50
+    version: 2
+    prefix: *prefix
+
+    walk: *cmcIIIb_V3_entPhySensorValue_walk
+    overrides:
+      <<: *cmcIIIb_V3_entPhySensorValue_overrides
+    lookups: *cmcIIIb_V3_entPhySensorValue_lookups
+
+    walk: *cmcIIIb_VarValueInt_walk
+    overrides:
+      <<: *cmcIIIb_VarValueInt_overrides
+    lookups: *cmcIIIb_VarValueInt_lookups
+
+    walk: #*cmcIIIDevTable_walk
+      - cmcIIIDevTable
+    overrides:
+      <<: *cmcIIIDevTable_overrides
+    lookups: *cmcIIIDevTable_lookups
+
+    walk: #*cmcIIIUnitLoad_walk
+      - cmcIIIUnitLoadTable
+    overrides:
+      <<: *cmcIIIUnitLoad_overrides
+    lookups: *cmcIIIUnitLoad_lookups
+
+    walk: *cmcIIIHr_walk
+    overrides:
+      <<: *cmcIIIHr_overrides
+    lookups: *cmcIIIHr_lookups
+
+    walk: *sysuptime_walk
+    overrides:
+      <<: *sysuptime_overrides
+
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+        drop_source_indexes: true
+
+
+  lcpIIIb_V4:
+    max_repetitions: 50
+    version: 2
+    prefix: *prefix
+
+    walk: *cmcIIIb_V4_entPhySensorValue_walk
+    overrides:
+      <<: *cmcIIIb_V4_entPhySensorValue_overrides
+    lookups: *cmcIIIb_V4_entPhySensorValue_lookups
+
+    walk: *cmcIIIb_VarValueInt_walk
+    overrides:
+      <<: *cmcIIIb_VarValueInt_overrides
+    lookups: *cmcIIIb_VarValueInt_lookups
+
+    walk: #*cmcIIIDevTable_walk
+      - cmcIIIDevTable
+    overrides:
+      <<: *cmcIIIDevTable_overrides
+    lookups: *cmcIIIDevTable_lookups
+
+    walk: #*cmcIIIUnitLoad_walk
+      - cmcIIIUnitLoadTable
+    overrides:
+      <<: *cmcIIIUnitLoad_overrides
+    lookups: *cmcIIIUnitLoad_lookups
+
+    walk: *cmcIIIHr_walk
+    overrides:
+      <<: *cmcIIIHr_overrides
+    lookups: *cmcIIIHr_lookups
+
+    walk: *sysuptime_walk
+    overrides:
+      <<: *sysuptime_overrides
+
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+        drop_source_indexes: true
+
+  # We have per rack two 7955.433 PDUs which have 1 IR-Sensor (door - 7030.120),
+  # 1 Temperature/Humidity (7030.111), and 2 Temperature sensors (7030.110)
+  # connected each. Luckily (in contrast to LCPs) the software enumerated the
+  # devices in the same way on each PDU - so mapping can be done in a
+  # straight forward way (quick and dirty), because enumeration is stable over
+  # reboots.
+  pdu_basics_template:
+    walk: &pdu_basics_walk
+      - sysUpTime
+      - snmpInPkts
+      - snmpOutPkts
+      - sysLocation
+    overrides: &pdu_basics_overrides
+      sysUpTime:
+        type: uptime
+        regex_extracts:
+          ^pdu_boot_time:
+            - regex: '(.*)'
+              value: '$1'
+
+
+  pdu_devstatus_template:
+    walk: &pdu_devstatus_walk
+      - cmcIIIDevStatus
+    lookups: &pdu_devstatus_lookups
+      - source_indexes: [cmcIIIDevIndex]
+        mprefix: [ cmcIIIDev ]
+        lookup: cmcIIIDevName
+        rename: name
+      - source_indexes: [cmcIIIDevIndex]
+        mprefix: [ cmcIIIDev ]
+        lookup: cmcIIIDevLocation
+        rename: loc
+    overrides: &pdu_devstatus_overrides
+      cmcIIIDevStatus:
+        rename:
+          - sub_oids: '.*'
+            value: 'pdu_status_device'
+
+
+  ################ DK 7955.433 ################
+
+  pdu_hrStorage_template:
+    walk: &pdu_hrStorage_walk
+      #- hrStorageSize
+      #- hrStorageUsed
+      - 1.3.6.1.2.1.25.2.3.1.5.1
+      - 1.3.6.1.2.1.25.2.3.1.6.1
+      - 1.3.6.1.2.1.25.2.3.1.6.3
+      - 1.3.6.1.2.1.25.2.3.1.6.6
+      - 1.3.6.1.2.1.25.2.3.1.6.7
+      - 1.3.6.1.2.1.25.2.3.1.6.8
+    lookups: &pdu_hrStorage_lookups
+      - source_indexes: [hrStorageIndex]
+        mprefix: [hrStorageSize]
+        lookup: hrStorageIndex
+        rename: total
+        remap: &pdu_hrStorage_map
+          '1': physical
+          '7': cache
+          '6': buffer
+          '8': shared
+          '3': virtual
+      - source_indexes: [hrStorageIndex]
+        mprefix: [hrStorageUsed]
+        lookup: hrStorageIndex
+        rename: used
+        remap:
+          <<: *pdu_hrStorage_map
+    overrides: &pdu_hrStorage_overrides
+      hrStorageSize:
+        regex_extracts:
+          ^pdu_memory_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+      hrStorageUsed:
+        regex_extracts:
+          ^pdu_memory_kbytes:
+            - regex: '(.*)'
+              value: '$1'
+
+  pdu_load_template:
+    walk: &pdu_load_walk
+      - cmcIIIUnitLoadTable
+    lookups: &pdu_load_lookups
+      - source_indexes: [cmcIIIUnitLoadIndex]
+        mprefix: [cmcIIIUnitLoad]
+        lookup: cmcIIIUnitLoadIndex
+        rename: min
+    overrides: &pdu_load_overrides
+      cmcIIIUnitLoadAverage:
+        regex_extracts: # Rittal crap uses a % number -> normalize: 100% == 1.0
+          ^pdu_load:
+            - regex: '([0-9]*)([0-9][0-9])|([0-9])'
+              value: '$1.$2$3'
+
+
+  # Very expensive: fetching entPhysicalDescr takes ~ 1s =8-((
+  # We just use it to retrieve the current settings, put it into a map and use
+  # it for static lookups.
+  pdu_phySensor_template:
+    walk: &pdu_phySensor_walk
+      - entPhySensorValue
+    lookups: &pdu_phySensor_lookups
+      - source_indexes: [entPhysicalIndex]
+        mprefix: [entPhySensorValue]
+        lookup: entPhysicalDescr
+        rename: sensor
+  
+
+  # produced with via pdu_phySensor_template and some sed mangling to zero out
+  # entPhysicalDescr fetch time - in case we need "the original".
+  pdu_phySensor2_template:
+    walk: &pdu_phySensor2_walk
+      - entPhySensorValue
+    lookups: &pdu_phySensor2_lookups
+      - source_indexes: [entPhysicalIndex]
+        mprefix: [entPhySensorValue]
+        lookup: entPhysicalIndex
+        rename: sensor
+        remap:
+          '1001': 'Unit.Frequency.Value' #						 50000
+          '1002': 'Unit.Neutral Current.Value' #				 2960
+          '1003': 'Unit.Power.Active.Value' #					 2319
+          '1004': 'Unit.Energy.Active.Value' #					 486395
+          '1005': 'Unit.Energy.Active.Runtime.Value' #			 7.5301214e+07
+          '1006': 'Unit.Energy.Active Custom.Value' #			 486394
+          '1007': 'Unit.Energy.Active Custom.Runtime.Value' #	 7.5301214e+07
+          '1008': 'Phase L1.Voltage.Value' #					 230900
+          '1009': 'Phase L1.Current.Value' #					 5610
+          '1010': 'Phase L1.Power.Factor.Value' #				 95
+          '1011': 'Phase L1.Power.Active.Value' #				 1161
+          '1012': 'Phase L1.Power.Reactive.Value' #				 310
+          '1013': 'Phase L1.Power.Apparent.Value' #				 1220
+          '1014': 'Phase L1.Energy.Active.Value' #				 188134
+          '1015': 'Phase L1.Energy.Active Custom.Value' #		 188993
+          '1016': 'Phase L1.Energy.Apparent.Value' # 200356
+          '1017': 'Phase L2.Voltage.Value' # 231900
+          '1018': 'Phase L2.Current.Value' # 2750
+          '1019': 'Phase L2.Power.Factor.Value' # 98
+          '1020': 'Phase L2.Power.Active.Value' # 626
+          '1021': 'Phase L2.Power.Reactive.Value' #	138
+          '1022': 'Phase L2.Power.Apparent.Value' #	642
+          '1023': 'Phase L2.Energy.Active.Value' # 145903
+          '1024': 'Phase L2.Energy.Active Custom.Value' #	 146751
+          '1025': 'Phase L2.Energy.Apparent.Value' #	 150253
+          '1026': 'Phase L3.Voltage.Value' #	 230600
+          '1027': 'Phase L3.Current.Value' #	 2270
+          '1028': 'Phase L3.Power.Factor.Value' #	 96
+          '1029': 'Phase L3.Power.Active.Value' #	 502
+          '1030': 'Phase L3.Power.Reactive.Value' #	 134
+          '1031': 'Phase L3.Power.Apparent.Value' #	 524
+          '1032': 'Phase L3.Energy.Active.Value' #	 152359
+          '1033': 'Phase L3.Energy.Active Custom.Value' #	 153260
+          '1034': 'Phase L3.Energy.Apparent.Value' #	 157216
+          '1035': 'Sockets.Socket 01.Current.Value' #	 650
+          '1036': 'Sockets.Socket 01.Power.Factor.Value' #	 99
+          '1037': 'Sockets.Socket 01.Power.Active.Value' #	 150
+          '1038': 'Sockets.Socket 01.Power.Reactive.Value' #	 26
+          '1039': 'Sockets.Socket 01.Power.Apparent.Value' #	 152
+          '1040': 'Sockets.Socket 01.Energy.Active.Value' #	 42525
+          '1041': 'Sockets.Socket 01.Energy.Active Custom.Value' #	 42525
+          '1042': 'Sockets.Socket 01.Energy.Apparent.Value' #	 43039
+          '1043': 'Sockets.Socket 02.Current.Value' #	 630
+          '1044': 'Sockets.Socket 02.Power.Factor.Value' #	 99
+          '1045': 'Sockets.Socket 02.Power.Active.Value' #	 141
+          '1046': 'Sockets.Socket 02.Power.Reactive.Value' #	 24
+          '1047': 'Sockets.Socket 02.Power.Apparent.Value' #	 143
+          '1048': 'Sockets.Socket 02.Energy.Active.Value' #	 41935
+          '1049': 'Sockets.Socket 02.Energy.Active Custom.Value' #	 41935
+          '1050': 'Sockets.Socket 02.Energy.Apparent.Value' #	 42428
+          '1051': 'Sockets.Socket 03.Current.Value' #	 520
+          '1052': 'Sockets.Socket 03.Power.Factor.Value' #	 93
+          '1053': 'Sockets.Socket 03.Power.Active.Value' #	 109
+          '1054': 'Sockets.Socket 03.Power.Reactive.Value' #	 42
+          '1055': 'Sockets.Socket 03.Power.Apparent.Value' #	 116
+          '1056': 'Sockets.Socket 03.Energy.Active.Value' #	 24546
+          '1057': 'Sockets.Socket 03.Energy.Active Custom.Value' #	 24546
+          '1058': 'Sockets.Socket 03.Energy.Apparent.Value' #	 26246
+          '1059': 'Sockets.Socket 04.Current.Value' #	 470
+          '1060': 'Sockets.Socket 04.Power.Factor.Value' #	 95
+          '1061': 'Sockets.Socket 04.Power.Active.Value' #	 101
+          '1062': 'Sockets.Socket 04.Power.Reactive.Value' #	 35
+          '1063': 'Sockets.Socket 04.Power.Apparent.Value' #	 107
+          '1064': 'Sockets.Socket 04.Energy.Active.Value' #	 20340
+          '1065': 'Sockets.Socket 04.Energy.Active Custom.Value' #	 20340
+          '1066': 'Sockets.Socket 04.Energy.Apparent.Value' #	 21659
+          '1067': 'Sockets.Socket 05.Current.Value' #	 30
+          '1068': 'Sockets.Socket 05.Power.Factor.Value' #	 70
+          '1069': 'Sockets.Socket 05.Power.Active.Value' #	 5
+          '1070': 'Sockets.Socket 05.Power.Reactive.Value' #	 5
+          '1071': 'Sockets.Socket 05.Power.Apparent.Value' #	 7
+          '1072': 'Sockets.Socket 05.Energy.Active.Value' #	 1789
+          '1073': 'Sockets.Socket 05.Energy.Active Custom.Value' #	 1789
+          '1074': 'Sockets.Socket 05.Energy.Apparent.Value' #	 2262
+          '1075': 'Sockets.Socket 06.Current.Value' #	 0
+          '1076': 'Sockets.Socket 06.Power.Factor.Value' #	 100
+          '1077': 'Sockets.Socket 06.Power.Active.Value' #	 0
+          '1078': 'Sockets.Socket 06.Power.Reactive.Value' #	 0
+          '1079': 'Sockets.Socket 06.Power.Apparent.Value' #	 0
+          '1080': 'Sockets.Socket 06.Energy.Active.Value' #	 570
+          '1081': 'Sockets.Socket 06.Energy.Active Custom.Value' #	 570
+          '1082': 'Sockets.Socket 06.Energy.Apparent.Value' #	 595
+          '1083': 'Sockets.Socket 07.Current.Value' #	 340
+          '1084': 'Sockets.Socket 07.Power.Factor.Value' #	 75
+          '1085': 'Sockets.Socket 07.Power.Active.Value' #	 59
+          '1086': 'Sockets.Socket 07.Power.Reactive.Value' #	 53
+          '1087': 'Sockets.Socket 07.Power.Apparent.Value' #	 79
+          '1088': 'Sockets.Socket 07.Energy.Active.Value' #	 12212
+          '1089': 'Sockets.Socket 07.Energy.Active Custom.Value' #	 12212
+          '1090': 'Sockets.Socket 07.Energy.Apparent.Value' #	 16364
+          '1091': 'Sockets.Socket 08.Current.Value' #	 260
+          '1092': 'Sockets.Socket 08.Power.Factor.Value' #	 80
+          '1093': 'Sockets.Socket 08.Power.Active.Value' #	 47
+          '1094': 'Sockets.Socket 08.Power.Reactive.Value' #	 36
+          '1095': 'Sockets.Socket 08.Power.Apparent.Value' #	 60
+          '1096': 'Sockets.Socket 08.Energy.Active.Value' #	 9863
+          '1097': 'Sockets.Socket 08.Energy.Active Custom.Value' #	 9863
+          '1098': 'Sockets.Socket 08.Energy.Apparent.Value' #	 12747
+          '1099': 'Sockets.Socket 09.Current.Value' #	 1030
+          '1100': 'Sockets.Socket 09.Power.Factor.Value' #	 94
+          '1101': 'Sockets.Socket 09.Power.Active.Value' #	 249
+          '1102': 'Sockets.Socket 09.Power.Reactive.Value' #	 90
+          '1103': 'Sockets.Socket 09.Power.Apparent.Value' #	 265
+          '1104': 'Sockets.Socket 09.Energy.Active.Value' #	 15622
+          '1105': 'Sockets.Socket 09.Energy.Active Custom.Value' #	 15622
+          '1106': 'Sockets.Socket 09.Energy.Apparent.Value' #	 16006
+          '1107': 'Sockets.Socket 10.Current.Value' #	 1280
+          '1108': 'Sockets.Socket 10.Power.Factor.Value' #	 96
+          '1109': 'Sockets.Socket 10.Power.Active.Value' #	 313
+          '1110': 'Sockets.Socket 10.Power.Reactive.Value' #	 91
+          '1111': 'Sockets.Socket 10.Power.Apparent.Value' #	 326
+          '1112': 'Sockets.Socket 10.Energy.Active.Value' #	 18731
+          '1113': 'Sockets.Socket 10.Energy.Active Custom.Value' #	 18731
+          '1114': 'Sockets.Socket 10.Energy.Apparent.Value' #	 19009
+          '1115': 'Sockets.Socket 11.Current.Value' #	 0
+          '1116': 'Sockets.Socket 11.Power.Factor.Value' #	 99
+          '1117': 'Sockets.Socket 11.Power.Active.Value' #	 0
+          '1118': 'Sockets.Socket 11.Power.Reactive.Value' #	 0
+          '1119': 'Sockets.Socket 11.Power.Apparent.Value' #	 0
+          '1120': 'Sockets.Socket 11.Energy.Active.Value' #	 41898
+          '1121': 'Sockets.Socket 11.Energy.Active Custom.Value' #	 41898
+          '1122': 'Sockets.Socket 11.Energy.Apparent.Value' #	 42619
+          '1123': 'Sockets.Socket 12.Current.Value' #	 680
+          '1124': 'Sockets.Socket 12.Power.Factor.Value' #	 99
+          '1125': 'Sockets.Socket 12.Power.Active.Value' #	 157
+          '1126': 'Sockets.Socket 12.Power.Reactive.Value' #	 26
+          '1127': 'Sockets.Socket 12.Power.Apparent.Value' #	 159
+          '1128': 'Sockets.Socket 12.Energy.Active.Value' #	 23245
+          '1129': 'Sockets.Socket 12.Energy.Active Custom.Value' #	 23245
+          '1130': 'Sockets.Socket 12.Energy.Apparent.Value' #	 23876
+          '1131': 'Sockets.Socket 13.Current.Value' #	 560
+          '1132': 'Sockets.Socket 13.Power.Factor.Value' #	 98
+          '1133': 'Sockets.Socket 13.Power.Active.Value' #	 126
+          '1134': 'Sockets.Socket 13.Power.Reactive.Value' #	 27
+          '1135': 'Sockets.Socket 13.Power.Apparent.Value' #	 129
+          '1136': 'Sockets.Socket 13.Energy.Active.Value' #	 27140
+          '1137': 'Sockets.Socket 13.Energy.Active Custom.Value' #	 27140
+          '1138': 'Sockets.Socket 13.Energy.Apparent.Value' #	 27977
+          '1139': 'Sockets.Socket 14.Current.Value' #	 640
+          '1140': 'Sockets.Socket 14.Power.Factor.Value' #	 99
+          '1141': 'Sockets.Socket 14.Power.Active.Value' #	 139
+          '1142': 'Sockets.Socket 14.Power.Reactive.Value' #	 32
+          '1143': 'Sockets.Socket 14.Power.Apparent.Value' #	 150
+          '1144': 'Sockets.Socket 14.Energy.Active.Value' #	 8993
+          '1145': 'Sockets.Socket 14.Energy.Active Custom.Value' #	 8993
+          '1146': 'Sockets.Socket 14.Energy.Apparent.Value' #	 9124
+          '1147': 'Sockets.Socket 15.Current.Value' #	 50
+          '1148': 'Sockets.Socket 15.Power.Factor.Value' #	 100
+          '1149': 'Sockets.Socket 15.Power.Active.Value' #	 12
+          '1150': 'Sockets.Socket 15.Power.Reactive.Value' #	 0
+          '1151': 'Sockets.Socket 15.Power.Apparent.Value' #	 12
+          '1152': 'Sockets.Socket 15.Energy.Active.Value' #	 2485
+          '1153': 'Sockets.Socket 15.Energy.Active Custom.Value' #	 2485
+          '1154': 'Sockets.Socket 15.Energy.Apparent.Value' #	 2641
+          '1155': 'Sockets.Socket 16.Current.Value' #	 0
+          '1156': 'Sockets.Socket 16.Power.Factor.Value' #	 100
+          '1157': 'Sockets.Socket 16.Power.Active.Value' #	 0
+          '1158': 'Sockets.Socket 16.Power.Reactive.Value' #	 0
+          '1159': 'Sockets.Socket 16.Power.Apparent.Value' #	 0
+          '1160': 'Sockets.Socket 16.Energy.Active.Value' #	 66
+          '1161': 'Sockets.Socket 16.Energy.Active Custom.Value' #	 66
+          '1162': 'Sockets.Socket 16.Energy.Apparent.Value' #	 68
+          '1163': 'Sockets.Socket 17.Current.Value' #	 850
+          '1164': 'Sockets.Socket 17.Power.Factor.Value' #	 96
+          '1165': 'Sockets.Socket 17.Power.Active.Value' #	 193
+          '1166': 'Sockets.Socket 17.Power.Reactive.Value' #	 53
+          '1167': 'Sockets.Socket 17.Power.Apparent.Value' #	 201
+          '1168': 'Sockets.Socket 17.Energy.Active.Value' #	 42075
+          '1169': 'Sockets.Socket 17.Energy.Active Custom.Value' #	 42075
+          '1170': 'Sockets.Socket 17.Energy.Apparent.Value' #	 43949
+          '1171': 'Sockets.Socket 18.Current.Value' #	 0
+          '1172': 'Sockets.Socket 18.Power.Factor.Value' #	 100
+          '1173': 'Sockets.Socket 18.Power.Active.Value' #	 0
+          '1174': 'Sockets.Socket 18.Power.Reactive.Value' #	 0
+          '1175': 'Sockets.Socket 18.Power.Apparent.Value' #	 0
+          '1176': 'Sockets.Socket 18.Energy.Active.Value' #	 0
+          '1177': 'Sockets.Socket 18.Energy.Active Custom.Value' #	 0
+          '1178': 'Sockets.Socket 18.Energy.Apparent.Value' #	 0
+          '1179': 'Sockets.Socket 19.Current.Value' #	 0
+          '1180': 'Sockets.Socket 19.Power.Factor.Value' #	 100
+          '1181': 'Sockets.Socket 19.Power.Active.Value' #	 0
+          '1182': 'Sockets.Socket 19.Power.Reactive.Value' #	 0
+          '1183': 'Sockets.Socket 19.Power.Apparent.Value' #	 0
+          '1184': 'Sockets.Socket 19.Energy.Active.Value' #	 0
+          '1185': 'Sockets.Socket 19.Energy.Active Custom.Value' #	 0
+          '1186': 'Sockets.Socket 19.Energy.Apparent.Value' #	 0
+          '1187': 'Sockets.Socket 20.Current.Value' #	 0
+          '1188': 'Sockets.Socket 20.Power.Factor.Value' #	 100
+          '1189': 'Sockets.Socket 20.Power.Active.Value' #	 0
+          '1190': 'Sockets.Socket 20.Power.Reactive.Value' #	 0
+          '1191': 'Sockets.Socket 20.Power.Apparent.Value' #	 0
+          '1192': 'Sockets.Socket 20.Energy.Active.Value' #	 0
+          '1193': 'Sockets.Socket 20.Energy.Active Custom.Value' #	 0
+          '1194': 'Sockets.Socket 20.Energy.Apparent.Value' #	 0
+          '1195': 'Sockets.Socket 21.Current.Value' #	 740
+          '1196': 'Sockets.Socket 21.Power.Factor.Value' #	 98
+          '1197': 'Sockets.Socket 21.Power.Active.Value' #	 158
+          '1198': 'Sockets.Socket 21.Power.Reactive.Value' #	 30
+          '1199': 'Sockets.Socket 21.Power.Apparent.Value' #	 161
+          '1200': 'Sockets.Socket 21.Energy.Active.Value' #	 53008
+          '1201': 'Sockets.Socket 21.Energy.Active Custom.Value' #	 53008
+          '1202': 'Sockets.Socket 21.Energy.Apparent.Value' #	 53704
+          '1203': 'Sockets.Socket 22.Current.Value' #	 630
+          '1204': 'Sockets.Socket 22.Power.Factor.Value' #	 99
+          '1205': 'Sockets.Socket 22.Power.Active.Value' #	 148
+          '1206': 'Sockets.Socket 22.Power.Reactive.Value' #	 20
+          '1207': 'Sockets.Socket 22.Power.Apparent.Value' #	 150
+          '1208': 'Sockets.Socket 22.Energy.Active.Value' #	 53828
+          '1209': 'Sockets.Socket 22.Energy.Active Custom.Value' #	 53828
+          '1210': 'Sockets.Socket 22.Energy.Apparent.Value' #	 54411
+          '1211': 'Sockets.Socket 23.Current.Value' #	 0
+          '1212': 'Sockets.Socket 23.Power.Factor.Value' #	 100
+          '1213': 'Sockets.Socket 23.Power.Active.Value' #	 0
+          '1214': 'Sockets.Socket 23.Power.Reactive.Value' #	 0
+          '1215': 'Sockets.Socket 23.Power.Apparent.Value' #	 0
+          '1216': 'Sockets.Socket 23.Energy.Active.Value' #	 3441
+          '1217': 'Sockets.Socket 23.Energy.Active Custom.Value' #	 3441
+          '1218': 'Sockets.Socket 23.Energy.Apparent.Value' #	 3638
+          '1219': 'Sockets.Socket 24.Current.Value' #	 570
+          '1220': 'Sockets.Socket 24.Power.Factor.Value' #	 94
+          '1221': 'Sockets.Socket 24.Power.Active.Value' #	 124
+          '1222': 'Sockets.Socket 24.Power.Reactive.Value' #	 45
+          '1223': 'Sockets.Socket 24.Power.Apparent.Value' #	 132
+          '1224': 'Sockets.Socket 24.Energy.Active.Value' #	 26412
+          '1225': 'Sockets.Socket 24.Energy.Active Custom.Value' #	 26412
+          '1226': 'Sockets.Socket 24.Energy.Apparent.Value' #	 28113
+          '1227': 'Sockets.Socket 25.Current.Value' #	 340
+          '1228': 'Sockets.Socket 25.Power.Factor.Value' #	 89
+          '1229': 'Sockets.Socket 25.Power.Active.Value' #	 73
+          '1230': 'Sockets.Socket 25.Power.Reactive.Value' #	 38
+          '1231': 'Sockets.Socket 25.Power.Apparent.Value' #	 82
+          '1232': 'Sockets.Socket 25.Energy.Active.Value' #	 15458
+          '1233': 'Sockets.Socket 25.Energy.Active Custom.Value' #	 15458
+          '1234': 'Sockets.Socket 25.Energy.Apparent.Value' #	 17063
+          '1235': 'Sockets.Socket 26.Current.Value' #	 0
+          '1236': 'Sockets.Socket 26.Power.Factor.Value' #	 100
+          '1237': 'Sockets.Socket 26.Power.Active.Value' #	 0
+          '1238': 'Sockets.Socket 26.Power.Reactive.Value' #	 0
+          '1239': 'Sockets.Socket 26.Power.Apparent.Value' #	 0
+          '1240': 'Sockets.Socket 26.Energy.Active.Value' #	 23
+          '1241': 'Sockets.Socket 26.Energy.Active Custom.Value' #	 23
+          '1242': 'Sockets.Socket 26.Energy.Apparent.Value' #	 27
+          '1243': 'Sockets.Socket 27.Current.Value' #	 0
+          '1244': 'Sockets.Socket 27.Power.Factor.Value' #	 100
+          '1245': 'Sockets.Socket 27.Power.Active.Value' #	 0
+          '1246': 'Sockets.Socket 27.Power.Reactive.Value' #	 0
+          '1247': 'Sockets.Socket 27.Power.Apparent.Value' #	 0
+          '1248': 'Sockets.Socket 27.Energy.Active.Value' #	 188
+          '1249': 'Sockets.Socket 27.Energy.Active Custom.Value' #	 188
+          '1250': 'Sockets.Socket 27.Energy.Apparent.Value' #	 259
+          '1251': 'Sockets.Socket 28.Current.Value' #	 0
+          '1252': 'Sockets.Socket 28.Power.Factor.Value' #	 100
+          '1253': 'Sockets.Socket 28.Power.Active.Value' #	 0
+          '1254': 'Sockets.Socket 28.Power.Reactive.Value' #	 0
+          '1255': 'Sockets.Socket 28.Power.Apparent.Value' #	 0
+          '1256': 'Sockets.Socket 28.Energy.Active.Value' #	 0
+          '1257': 'Sockets.Socket 28.Energy.Active Custom.Value' #	 0
+          '1258': 'Sockets.Socket 28.Energy.Apparent.Value' #	 0
+          '1259': 'Sockets.Socket 29.Current.Value' #	 0
+          '1260': 'Sockets.Socket 29.Power.Factor.Value' #	 100
+          '1261': 'Sockets.Socket 29.Power.Active.Value' #	 0
+          '1262': 'Sockets.Socket 29.Power.Reactive.Value' #	 0
+          '1263': 'Sockets.Socket 29.Power.Apparent.Value' #	 0
+          '1264': 'Sockets.Socket 29.Energy.Active.Value' #	 0
+          '1265': 'Sockets.Socket 29.Energy.Active Custom.Value' #	 0
+          '1266': 'Sockets.Socket 29.Energy.Apparent.Value' #	 0
+          '1267': 'Sockets.Socket 30.Current.Value' #	 0
+          '1268': 'Sockets.Socket 30.Power.Factor.Value' #	 100
+          '1269': 'Sockets.Socket 30.Power.Active.Value' #	 0
+          '1270': 'Sockets.Socket 30.Power.Reactive.Value' #	 0
+          '1271': 'Sockets.Socket 30.Power.Apparent.Value' #	 0
+          '1272': 'Sockets.Socket 30.Energy.Active.Value' #	 0
+          '1273': 'Sockets.Socket 30.Energy.Active Custom.Value' #	 0
+          '1274': 'Sockets.Socket 30.Energy.Apparent.Value' #	 0
+          '1275': 'Memory.USB-Stick.Size' #	 0
+          '1276': 'Memory.USB-Stick.Usage' #	 0
+          '102001': 'Access.Value' #							 2
+          '202001': 'Temperature.Value' #	 25300
+          '202002': 'Humidity.Value' #	 23000
+          '202003': 'Dew Point.Value' #	 2600
+          '302001': 'Temperature.Value' #	 32100
+          '402001': 'Temperature.Value' #	 21500
+
+  pdu_phySensor3_template:
+    walk: &pdu_phySensor3_walk
+      - entPhySensorValue
+    lookups: &pdu_phySensor3_lookups
+      - source_indexes: [entPhysicalIndex]
+        mprefix: [entPhySensorValue]
+        lookup: entPhysicalIndex
+        rename: sensor
+        remap:
+          '1001': 'pdu' #			# Unit.Frequency
+          '1002': 'N' #				# Unit.Neutral Current
+          '1003': 'pdu' #			# Unit.Power.Active
+          '1004': 'pdu' #			# Unit.Energy.Active
+          '1005': '' #				# Unit.Energy.Active.Runtime
+          '1006': '@drop@' #		# Unit.Energy.Active Custom
+          '1007': '@drop@' #		# Unit.Energy.Active Custom.Runtime
+          '1008': 'L1' #			# Phase L1.Voltage
+          '1009': 'L1' #			# Phase L1.Current
+          '1010': 'L1' #			# Phase L1.Power.Factor
+          '1011': 'L1' #			# Phase L1.Power.Active
+          '1012': 'L1' #			# Phase L1.Power.Reactive
+          '1013': 'L1' #			# Phase L1.Power.Apparent
+          '1014': 'L1' #			# Phase L1.Energy.Active
+          '1015': '@drop@' #		# Phase L1.Energy.Active Custom
+          '1016': 'L1' #			# Phase L1.Energy.Apparent
+          '1017': 'L2' #			# Phase L2.Voltage
+          '1018': 'L2' #			# Phase L2.Current
+          '1019': 'L2' #			# Phase L2.Power.Factor
+          '1020': 'L2' #			# Phase L2.Power.Active
+          '1021': 'L2' #			# Phase L2.Power.Reactive
+          '1022': 'L2' #			# Phase L2.Power.Apparent
+          '1023': 'L2' #			# Phase L2.Energy.Active
+          '1024': '@drop@' #		# Phase L2.Energy.Active Custom
+          '1025': 'L2' #			# Phase L2.Energy.Apparent
+          '1026': 'L3' #			# Phase L3.Voltage
+          '1027': 'L3' #			# Phase L3.Current
+          '1028': 'L3' #			# Phase L3.Power.Factor
+          '1029': 'L3' #			# Phase L3.Power.Active
+          '1030': 'L3' #			# Phase L3.Power.Reactive
+          '1031': 'L3' #			# Phase L3.Power.Apparent
+          '1032': 'L3' #			# Phase L3.Energy.Active
+          '1033': '@drop@' #		# Phase L3.Energy.Active Custom
+          '1034': 'L3' #			# Phase L3.Energy.Apparent
+          '1035': 'S_01' #			# Sockets.Socket 01.Current
+          '1036': 'S_01' #			# Sockets.Socket 01.Power.Factor
+          '1037': 'S_01' #			# Sockets.Socket 01.Power.Active
+          '1038': 'S_01' #			# Sockets.Socket 01.Power.Reactive
+          '1039': 'S_01' #			# Sockets.Socket 01.Power.Apparent
+          '1040': 'S_01' #			# Sockets.Socket 01.Energy.Active
+          '1041': '@drop@' #		# Sockets.Socket 01.Energy.Active Custom
+          '1042': 'S_01' #			# Sockets.Socket 01.Energy.Apparent
+          '1043': 'S_02' #			# Sockets.Socket 02.Current
+          '1044': 'S_02' #			# Sockets.Socket 02.Power.Factor
+          '1045': 'S_02' #			# Sockets.Socket 02.Power.Active
+          '1046': 'S_02' #			# Sockets.Socket 02.Power.Reactive
+          '1047': 'S_02' #			# Sockets.Socket 02.Power.Apparent
+          '1048': 'S_02' #			# Sockets.Socket 02.Energy.Active
+          '1049': '@drop@' #		# Sockets.Socket 02.Energy.Active Custom
+          '1050': 'S_02' #			# Sockets.Socket 02.Energy.Apparent
+          '1051': 'S_03' #			# Sockets.Socket 03.Current
+          '1052': 'S_03' #			# Sockets.Socket 03.Power.Factor
+          '1053': 'S_03' #			# Sockets.Socket 03.Power.Active
+          '1054': 'S_03' #			# Sockets.Socket 03.Power.Reactive
+          '1055': 'S_03' #			# Sockets.Socket 03.Power.Apparent
+          '1056': 'S_03' #			# Sockets.Socket 03.Energy.Active
+          '1057': '@drop@' #		# Sockets.Socket 03.Energy.Active Custom
+          '1058': 'S_03' #			# Sockets.Socket 03.Energy.Apparent
+          '1059': 'S_04' #			# Sockets.Socket 04.Current
+          '1060': 'S_04' #			# Sockets.Socket 04.Power.Factor
+          '1061': 'S_04' #			# Sockets.Socket 04.Power.Active
+          '1062': 'S_04' #			# Sockets.Socket 04.Power.Reactive
+          '1063': 'S_04' #			# Sockets.Socket 04.Power.Apparent
+          '1064': 'S_04' #			# Sockets.Socket 04.Energy.Active
+          '1065': '@drop@' #		# Sockets.Socket 04.Energy.Active Custom
+          '1066': 'S_04' #			# Sockets.Socket 04.Energy.Apparent
+          '1067': 'S_05' #			# Sockets.Socket 05.Current
+          '1068': 'S_05' #			# Sockets.Socket 05.Power.Factor
+          '1069': 'S_05' #			# Sockets.Socket 05.Power.Active
+          '1070': 'S_05' #			# Sockets.Socket 05.Power.Reactive
+          '1071': 'S_05' #			# Sockets.Socket 05.Power.Apparent
+          '1072': 'S_05' #			# Sockets.Socket 05.Energy.Active
+          '1073': '@drop@' #		# Sockets.Socket 05.Energy.Active Custom
+          '1074': 'S_05' #			# Sockets.Socket 05.Energy.Apparent
+          '1075': 'S_06' #			# Sockets.Socket 06.Current
+          '1076': 'S_06' #			# Sockets.Socket 06.Power.Factor
+          '1077': 'S_06' #			# Sockets.Socket 06.Power.Active
+          '1078': 'S_06' #			# Sockets.Socket 06.Power.Reactive
+          '1079': 'S_06' #			# Sockets.Socket 06.Power.Apparent
+          '1080': 'S_06' #			# Sockets.Socket 06.Energy.Active
+          '1081': '@drop@' #		# Sockets.Socket 06.Energy.Active Custom
+          '1082': 'S_06' #			# Sockets.Socket 06.Energy.Apparent
+          '1083': 'S_07' #			# Sockets.Socket 07.Current
+          '1084': 'S_07' #			# Sockets.Socket 07.Power.Factor
+          '1085': 'S_07' #			# Sockets.Socket 07.Power.Active
+          '1086': 'S_07' #			# Sockets.Socket 07.Power.Reactive
+          '1087': 'S_07' #			# Sockets.Socket 07.Power.Apparent
+          '1088': 'S_07' #			# Sockets.Socket 07.Energy.Active
+          '1089': '@drop@' #		# Sockets.Socket 07.Energy.Active Custom
+          '1090': 'S_07' #			# Sockets.Socket 07.Energy.Apparent
+          '1091': 'S_08' #			# Sockets.Socket 08.Current
+          '1092': 'S_08' #			# Sockets.Socket 08.Power.Factor
+          '1093': 'S_08' #			# Sockets.Socket 08.Power.Active
+          '1094': 'S_08' #			# Sockets.Socket 08.Power.Reactive
+          '1095': 'S_08' #			# Sockets.Socket 08.Power.Apparent
+          '1096': 'S_08' #			# Sockets.Socket 08.Energy.Active
+          '1097': '@drop@' #		# Sockets.Socket 08.Energy.Active Custom
+          '1098': 'S_08' #			# Sockets.Socket 08.Energy.Apparent
+          '1099': 'S_09' #			# Sockets.Socket 09.Current
+          '1100': 'S_09' #			# Sockets.Socket 09.Power.Factor
+          '1101': 'S_09' #			# Sockets.Socket 09.Power.Active
+          '1102': 'S_09' #			# Sockets.Socket 09.Power.Reactive
+          '1103': 'S_09' #			# Sockets.Socket 09.Power.Apparent
+          '1104': 'S_09' #			# Sockets.Socket 09.Energy.Active
+          '1105': '@drop@' #		# Sockets.Socket 09.Energy.Active Custom
+          '1106': 'S_09' #			# Sockets.Socket 09.Energy.Apparent
+          '1107': 'S_10' #			# Sockets.Socket 10.Current
+          '1108': 'S_10' #			# Sockets.Socket 10.Power.Factor
+          '1109': 'S_10' #			# Sockets.Socket 10.Power.Active
+          '1110': 'S_10' #			# Sockets.Socket 10.Power.Reactive
+          '1111': 'S_10' #			# Sockets.Socket 10.Power.Apparent
+          '1112': 'S_10' #			# Sockets.Socket 10.Energy.Active
+          '1113': '@drop@' #		# Sockets.Socket 10.Energy.Active Custom
+          '1114': 'S_10' #			# Sockets.Socket 10.Energy.Apparent
+          '1115': 'S_11' #			# Sockets.Socket 11.Current
+          '1116': 'S_11' #			# Sockets.Socket 11.Power.Factor
+          '1117': 'S_11' #			# Sockets.Socket 11.Power.Active
+          '1118': 'S_11' #			# Sockets.Socket 11.Power.Reactive
+          '1119': 'S_11' #			# Sockets.Socket 11.Power.Apparent
+          '1120': 'S_11' #			# Sockets.Socket 11.Energy.Active
+          '1121': '@drop@' #		# Sockets.Socket 11.Energy.Active Custom
+          '1122': 'S_11' #			# Sockets.Socket 11.Energy.Apparent
+          '1123': 'S_12' #			# Sockets.Socket 12.Current
+          '1124': 'S_12' #			# Sockets.Socket 12.Power.Factor
+          '1125': 'S_12' #			# Sockets.Socket 12.Power.Active
+          '1126': 'S_12' #			# Sockets.Socket 12.Power.Reactive
+          '1127': 'S_12' #			# Sockets.Socket 12.Power.Apparent
+          '1128': 'S_12' #			# Sockets.Socket 12.Energy.Active
+          '1129': '@drop@' #		# Sockets.Socket 12.Energy.Active Custom
+          '1130': 'S_12' #			# Sockets.Socket 12.Energy.Apparent
+          '1131': 'S_13' #			# Sockets.Socket 13.Current
+          '1132': 'S_13' #			# Sockets.Socket 13.Power.Factor
+          '1133': 'S_13' #			# Sockets.Socket 13.Power.Active
+          '1134': 'S_13' #			# Sockets.Socket 13.Power.Reactive
+          '1135': 'S_13' #			# Sockets.Socket 13.Power.Apparent
+          '1136': 'S_13' #			# Sockets.Socket 13.Energy.Active
+          '1137': '@drop@' #		# Sockets.Socket 13.Energy.Active Custom
+          '1138': 'S_13' #			# Sockets.Socket 13.Energy.Apparent
+          '1139': 'S_14' #			# Sockets.Socket 14.Current
+          '1140': 'S_14' #			# Sockets.Socket 14.Power.Factor
+          '1141': 'S_14' #			# Sockets.Socket 14.Power.Active
+          '1142': 'S_14' #			# Sockets.Socket 14.Power.Reactive
+          '1143': 'S_14' #			# Sockets.Socket 14.Power.Apparent
+          '1144': 'S_14' #			# Sockets.Socket 14.Energy.Active
+          '1145': '@drop@' #		# Sockets.Socket 14.Energy.Active Custom
+          '1146': 'S_14' #			# Sockets.Socket 14.Energy.Apparent
+          '1147': 'S_15' #			# Sockets.Socket 15.Current
+          '1148': 'S_15' #			# Sockets.Socket 15.Power.Factor
+          '1149': 'S_15' #			# Sockets.Socket 15.Power.Active
+          '1150': 'S_15' #			# Sockets.Socket 15.Power.Reactive
+          '1151': 'S_15' #			# Sockets.Socket 15.Power.Apparent
+          '1152': 'S_15' #			# Sockets.Socket 15.Energy.Active
+          '1153': '@drop@' #		# Sockets.Socket 15.Energy.Active Custom
+          '1154': 'S_15' #			# Sockets.Socket 15.Energy.Apparent
+          '1155': 'S_16' #			# Sockets.Socket 16.Current
+          '1156': 'S_16' #			# Sockets.Socket 16.Power.Factor
+          '1157': 'S_16' #			# Sockets.Socket 16.Power.Active
+          '1158': 'S_16' #			# Sockets.Socket 16.Power.Reactive
+          '1159': 'S_16' #			# Sockets.Socket 16.Power.Apparent
+          '1160': 'S_16' #			# Sockets.Socket 16.Energy.Active
+          '1161': '@drop@' #		# Sockets.Socket 16.Energy.Active Custom
+          '1162': 'S_16' #			# Sockets.Socket 16.Energy.Apparent
+          '1163': 'S_17' #			# Sockets.Socket 17.Current
+          '1164': 'S_17' #			# Sockets.Socket 17.Power.Factor
+          '1165': 'S_17' #			# Sockets.Socket 17.Power.Active
+          '1166': 'S_17' #			# Sockets.Socket 17.Power.Reactive
+          '1167': 'S_17' #			# Sockets.Socket 17.Power.Apparent
+          '1168': 'S_17' #			# Sockets.Socket 17.Energy.Active
+          '1169': '@drop@' #		# Sockets.Socket 17.Energy.Active Custom
+          '1170': 'S_17' #			# Sockets.Socket 17.Energy.Apparent
+          '1171': 'S_18' #			# Sockets.Socket 18.Current
+          '1172': 'S_18' #			# Sockets.Socket 18.Power.Factor
+          '1173': 'S_18' #			# Sockets.Socket 18.Power.Active
+          '1174': 'S_18' #			# Sockets.Socket 18.Power.Reactive
+          '1175': 'S_18' #			# Sockets.Socket 18.Power.Apparent
+          '1176': 'S_18' #			# Sockets.Socket 18.Energy.Active
+          '1177': '@drop@' #		# Sockets.Socket 18.Energy.Active Custom
+          '1178': 'S_18' #			# Sockets.Socket 18.Energy.Apparent
+          '1179': 'S_19' #			# Sockets.Socket 19.Current
+          '1180': 'S_19' #			# Sockets.Socket 19.Power.Factor
+          '1181': 'S_19' #			# Sockets.Socket 19.Power.Active
+          '1182': 'S_19' #			# Sockets.Socket 19.Power.Reactive
+          '1183': 'S_19' #			# Sockets.Socket 19.Power.Apparent
+          '1184': 'S_19' #			# Sockets.Socket 19.Energy.Active
+          '1185': '@drop@' #		# Sockets.Socket 19.Energy.Active Custom
+          '1186': 'S_19' #			# Sockets.Socket 19.Energy.Apparent
+          '1187': 'S_20' #			# Sockets.Socket 20.Current
+          '1188': 'S_20' #			# Sockets.Socket 20.Power.Factor
+          '1189': 'S_20' #			# Sockets.Socket 20.Power.Active
+          '1190': 'S_20' #			# Sockets.Socket 20.Power.Reactive
+          '1191': 'S_20' #			# Sockets.Socket 20.Power.Apparent
+          '1192': 'S_20' #			# Sockets.Socket 20.Energy.Active
+          '1193': '@drop@' #		# Sockets.Socket 20.Energy.Active Custom
+          '1194': 'S_20' #			# Sockets.Socket 20.Energy.Apparent
+          '1195': 'S_21' #			# Sockets.Socket 21.Current
+          '1196': 'S_21' #			# Sockets.Socket 21.Power.Factor
+          '1197': 'S_21' #			# Sockets.Socket 21.Power.Active
+          '1198': 'S_21' #			# Sockets.Socket 21.Power.Reactive
+          '1199': 'S_21' #			# Sockets.Socket 21.Power.Apparent
+          '1200': 'S_21' #			# Sockets.Socket 21.Energy.Active
+          '1201': '@drop@' #		# Sockets.Socket 21.Energy.Active Custom
+          '1202': 'S_21' #			# Sockets.Socket 21.Energy.Apparent
+          '1203': 'S_22' #			# Sockets.Socket 22.Current
+          '1204': 'S_22' #			# Sockets.Socket 22.Power.Factor
+          '1205': 'S_22' #			# Sockets.Socket 22.Power.Active
+          '1206': 'S_22' #			# Sockets.Socket 22.Power.Reactive
+          '1207': 'S_22' #			# Sockets.Socket 22.Power.Apparent
+          '1208': 'S_22' #			# Sockets.Socket 22.Energy.Active
+          '1209': '@drop@' #		# Sockets.Socket 22.Energy.Active Custom
+          '1210': 'S_22' #			# Sockets.Socket 22.Energy.Apparent
+          '1211': 'S_23' #			# Sockets.Socket 23.Current
+          '1212': 'S_23' #			# Sockets.Socket 23.Power.Factor
+          '1213': 'S_23' #			# Sockets.Socket 23.Power.Active
+          '1214': 'S_23' #			# Sockets.Socket 23.Power.Reactive
+          '1215': 'S_23' #			# Sockets.Socket 23.Power.Apparent
+          '1216': 'S_23' #			# Sockets.Socket 23.Energy.Active
+          '1217': '@drop@' #		# Sockets.Socket 23.Energy.Active Custom
+          '1218': 'S_23' #			# Sockets.Socket 23.Energy.Apparent
+          '1219': 'S_24' #			# Sockets.Socket 24.Current
+          '1220': 'S_24' #			# Sockets.Socket 24.Power.Factor
+          '1221': 'S_24' #			# Sockets.Socket 24.Power.Active
+          '1222': 'S_24' #			# Sockets.Socket 24.Power.Reactive
+          '1223': 'S_24' #			# Sockets.Socket 24.Power.Apparent
+          '1224': 'S_24' #			# Sockets.Socket 24.Energy.Active
+          '1225': '@drop@' #		# Sockets.Socket 24.Energy.Active Custom
+          '1226': 'S_24' #			# Sockets.Socket 24.Energy.Apparent
+          '1227': 'S_25' #			# Sockets.Socket 25.Current
+          '1228': 'S_25' #			# Sockets.Socket 25.Power.Factor
+          '1229': 'S_25' #			# Sockets.Socket 25.Power.Active
+          '1230': 'S_25' #			# Sockets.Socket 25.Power.Reactive
+          '1231': 'S_25' #			# Sockets.Socket 25.Power.Apparent
+          '1232': 'S_25' #			# Sockets.Socket 25.Energy.Active
+          '1233': '@drop@' #		# Sockets.Socket 25.Energy.Active Custom
+          '1234': 'S_25' #			# Sockets.Socket 25.Energy.Apparent
+          '1235': 'S_26' #			# Sockets.Socket 26.Current
+          '1236': 'S_26' #			# Sockets.Socket 26.Power.Factor
+          '1237': 'S_26' #			# Sockets.Socket 26.Power.Active
+          '1238': 'S_26' #			# Sockets.Socket 26.Power.Reactive
+          '1239': 'S_26' #			# Sockets.Socket 26.Power.Apparent
+          '1240': 'S_26' #			# Sockets.Socket 26.Energy.Active
+          '1241': '@drop@' #		# Sockets.Socket 26.Energy.Active Custom
+          '1242': 'S_26' #			# Sockets.Socket 26.Energy.Apparent
+          '1243': 'S_27' #			# Sockets.Socket 27.Current
+          '1244': 'S_27' #			# Sockets.Socket 27.Power.Factor
+          '1245': 'S_27' #			# Sockets.Socket 27.Power.Active
+          '1246': 'S_27' #			# Sockets.Socket 27.Power.Reactive
+          '1247': 'S_27' #			# Sockets.Socket 27.Power.Apparent
+          '1248': 'S_27' #			# Sockets.Socket 27.Energy.Active
+          '1249': '@drop@' #		# Sockets.Socket 27.Energy.Active Custom
+          '1250': 'S_27' #			# Sockets.Socket 27.Energy.Apparent
+          '1251': 'S_28' #			# Sockets.Socket 28.Current
+          '1252': 'S_28' #			# Sockets.Socket 28.Power.Factor
+          '1253': 'S_28' #			# Sockets.Socket 28.Power.Active
+          '1254': 'S_28' #			# Sockets.Socket 28.Power.Reactive
+          '1255': 'S_28' #			# Sockets.Socket 28.Power.Apparent
+          '1256': 'S_28' #			# Sockets.Socket 28.Energy.Active
+          '1257': '@drop@' #		# Sockets.Socket 28.Energy.Active Custom
+          '1258': 'S_28' #			# Sockets.Socket 28.Energy.Apparent
+          '1259': 'S_29' #			# Sockets.Socket 29.Current
+          '1260': 'S_29' #			# Sockets.Socket 29.Power.Factor
+          '1261': 'S_29' #			# Sockets.Socket 29.Power.Active
+          '1262': 'S_29' #			# Sockets.Socket 29.Power.Reactive
+          '1263': 'S_29' #			# Sockets.Socket 29.Power.Apparent
+          '1264': 'S_29' #			# Sockets.Socket 29.Energy.Active
+          '1265': '@drop@' #		# Sockets.Socket 29.Energy.Active Custom
+          '1266': 'S_29' #			# Sockets.Socket 29.Energy.Apparent
+          '1267': 'S_30' #			# Sockets.Socket 30.Current
+          '1268': 'S_30' #			# Sockets.Socket 30.Power.Factor
+          '1269': 'S_30' #			# Sockets.Socket 30.Power.Active
+          '1270': 'S_30' #			# Sockets.Socket 30.Power.Reactive
+          '1271': 'S_30' #			# Sockets.Socket 30.Power.Apparent
+          '1272': 'S_30' #			# Sockets.Socket 30.Energy.Active
+          '1273': '@drop@' #		# Sockets.Socket 30.Energy.Active Custom
+          '1274': 'S_30' #			# Sockets.Socket 30.Energy.Apparent
+          '1275': '@drop@' #		# Memory.USB-Stick.Size
+          '1276': '@drop@' #		# Memory.USB-Stick.Usage
+          '102001': 'IR' #			# Access
+          '202001': 'humidity' #	# Temperature
+          '202002': '' #			# Humidity
+          '202003': 'dew_point' #	# Dew Point
+          '302001': 'T1' #			# Temperature
+          '402001': 'T2' #			# Temperature2
+
+    overrides: &pdu_phySensor3_overrides
+      entPhySensorValue:
+        rename:
+          - value: pdu_frequency_Hz
+            sub_oids: '1001'
+          - value: pdu_voltage_mV # *.Voltage
+            sub_oids: '1008|1017|1026'
+          - value: pdu_current_mA # *Current*
+            sub_oids: '1002|1009|1018|1027|1035|1043|1051|1059|1067|1075|1083|1091|1099|1107|1115|1123|1131|1139|1147|1155|1163|1171|1179|1187|1195|1203|1211|1219|1227|1235|1243|1251|1259|1267'
+          - value: pdu_power_W # *.Power.Active
+            sub_oids: '1003|1011|1020|1029|1037|1045|1053|1061|1069|1077|1085|1093|1101|1109|1117|1125|1133|1141|1149|1157|1165|1173|1181|1189|1197|1205|1213|1221|1229|1237|1245|1253|1261|1269'
+          - value: pdu_powerfactor_pct # *.Power.Factor
+            sub_oids: '1010|1019|1028|1036|1044|1052|1060|1068|1076|1084|1092|1100|1108|1116|1124|1132|1140|1148|1156|1164|1172|1180|1188|1196|1204|1212|1220|1228|1236|1244|1252|1260|1268'
+          - value: pdu_power_VAR # *.Power.Reactive
+            sub_oids: '1012|1021|1030|1038|1046|1054|1062|1070|1078|1086|1094|1102|1110|1118|1126|1134|1142|1150|1158|1166|1174|1182|1190|1198|1206|1214|1222|1230|1238|1246|1254|1262|1270'
+          - value: pdu_power_VA # *.Power.Apparent
+            sub_oids: '1013|1022|1031|1039|1047|1055|1063|1071|1079|1087|1095|1103|1111|1119|1127|1135|1143|1151|1159|1167|1175|1183|1191|1199|1207|1215|1223|1231|1239|1247|1255|1263|1271'
+          - value: pdu_energy_kWh # *.Energy.Active
+            sub_oids: '1004|1014|1023|1032|1040|1048|1056|1064|1072|1080|1088|1096|1104|1112|1120|1128|1136|1144|1152|1160|1168|1176|1184|1192|1200|1208|1216|1224|1232|1240|1248|1256|1264|1272'
+          - value: pdu_energy_kVAh # *.Energy.Apparent
+            sub_oids: '1016|1025|1034|1042|1050|1058|1066|1074|1082|1090|1098|1106|1114|1122|1130|1138|1146|1154|1162|1170|1178|1186|1194|1202|1210|1218|1226|1234|1242|1250|1258|1266|1274'
+          - value: pdu_energy_rt_s # Unit.Energy.Active.Runtime
+            sub_oids: '1005'
+          - value: pdu_status_device # Access (IR)
+            sub_oids: '102001'
+          - value: pdu_temperature_C
+            sub_oids: '[234]02001|202003'
+          - value: pdu_humidity_pct # Humidity
+            sub_oids: '202002'
+        regex_extracts:
+          '':
+          - regex: '([0-9]*)([0-9])'
+            value: '$1.$2'
+            sub_oids: '1004|1014|1023|1032|1040|1048|1056|1064|1072|1080|1088|1096|1104|1112|1120|1128|1136|1144|1152|1160|1168|1176|1184|1192|1200|1208|1216|1224|1232|1240|1248|1256|1264|1272|1016|1025|1034|1042|1050|1058|1066|1074|1082|1090|1098|1106|1114|1122|1130|1138|1146|1154|1162|1170|1178|1186|1194|1202|1210|1218|1226|1234|1242|1250|1258|1266|1274' # same as for pdu_energy_{W,VA}h
+          - regex: '([0-9]*)([0-9][0-9][0-9])'
+            value: '$1.$2'
+            sub_oids: '[234]02001|20200[23]' # temp, humidity
+          - regex: '(.*)'
+            value: '$1'
+
+  # Our PDU socket descriptions contain the name of the attached box/PSU.
+  # We wanna expose them to grafana in entPhySensorValue related panels, too.
+  # Unfortunately Rittal doesn't expose it via entPhySensorValue, but only
+  # via incredible __slow__ private cmcIIIVarValue* tables (1131 entries).
+  # So we change this metric to have a "joinable" column (sensor) with
+  # entPhySensorValue related metrics, the actual value becomes 'desc' and
+  # everything else gets dropped. Finally we can pull it separately and are
+  # still able to retrieve the important values in 1+ s intervals.
+  #
+  # This module however should not be polled in intervals < 20s when the whole
+  # table gets fetched! Every hour or once a day is probably sufficient
+  # (depending on your TSDB) in any case.
+  # | pdu-k30a-m       | 18788.651 | 20884.259 | 19770.274 | (full table) |
+  # | pdu-k30a-m       |  412.894 |  880.072 |  588.842 |
+  pdu_socket_desc:
+    max_repetitions: 127 # ~ 2s. If you go higher, the daemon will die.
+    walk:
+      #- cmcIIIVarValueStr
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.148
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.179
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.210
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.241
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.272
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.303
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.334
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.365
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.396
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.427
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.458
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.489
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.520
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.551
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.582
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.613
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.644
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.675
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.706
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.737
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.768
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.799
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.830
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.861
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.892
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.923
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.954
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.985
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.1016
+      - 1.3.6.1.4.1.2606.7.4.2.2.1.10.1.1047
+    lookups:
+      - source_indexes: [cmcIIIVarDeviceIndex,cmcIIIVarIndex]
+        #drop_source_indexes: true
+        lookup: cmcIIIVarName
+        revalue:
+          regex: 'Sockets.Socket [0-9]+.General.DescName'
+          invert: true
+          value: '@drop@'
+      - source_indexes: [cmcIIIVarDeviceIndex,cmcIIIVarIndex]
+        lookup: cmcIIIVarName
+        rename: sensor
+        revalue:
+          regex: 'Sockets.Socket ([0-9]+).General.DescName'
+          value: 'S_$1'
+      - source_indexes: [cmcIIIVarDeviceIndex,cmcIIIVarIndex]
+        mprefix: [cmcIIIVarValueStr]
+        lookup: cmcIIIVarValueStr
+        rename: desc
+      # finally remove the non-index
+      - source_indexes: [cmcIIIVarDeviceIndex]
+        lookup: cmcIIIVarDeviceIndex
+        rename: cmcIIIVarName
+        remap:
+          '1': ''
+    overrides:
+      cmcIIIVarValueStr:
+        regex_extracts:
+          ^pdu_socket_desc:
+            - regex: '.*'
+              value: 1
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+        drop_source_indexes: true
+
+  # Overall ~ 13% take slightly more than 1s usually 1.2+-.1, all others
+  # are usually ~ .7 +- 0.1s. Per default it has an average load of ~3.5
+  # so cpu pressure is probably the root cause of such big deltas.
+  # So pull interval should be >= 2s.
+  pdu_managed:
+    prefix: pdu
+
+    # | pdu-k30a-m       |    2.236 |    3.662 |    2.816 |
+    walk: *pdu_basics_walk
+    overrides:
+      <<: *pdu_basics_overrides
+
+    # | pdu-k30a-m       |   26.270 |  157.377 |   49.486 |
+    walk: *pdu_devstatus_walk
+    lookups: *pdu_devstatus_lookups
+    overrides:
+      <<: *pdu_devstatus_overrides
+ 
+    # | pdu-k30a-m       |   14.901 |  157.769 |   35.837 |
+    walk: *pdu_hrStorage_walk
+    overrides:
+      <<: *pdu_hrStorage_overrides
+    lookups: *pdu_hrStorage_lookups
+
+    # | pdu-k30a-m       |    6.665 |   76.722 |   15.387 |
+    walk: *pdu_load_walk
+    overrides:
+      <<: *pdu_load_overrides
+    lookups: *pdu_load_lookups
+
+    walk: *pdu_phySensor_walk
+    # | pdu-k30a-m       | 1126.761 | 2071.252 | 1508.389 |
+    #lookups: *pdu_phySensor_lookups
+    # | pdu-k30a-m       |  430.564 | 1172.505 |  674.927 |
+    #lookups: *pdu_phySensor2_lookups
+    # | pdu-k30a-m       |  464.559 |  930.305 |  702.950 |
+    overrides:
+      <<: *pdu_phySensor3_overrides
+    lookups: *pdu_phySensor3_lookups
+
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+        drop_source_indexes: true

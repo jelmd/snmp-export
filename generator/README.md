@@ -491,6 +491,16 @@ ifOperStatus{ifIndex="83886080", ifOperStatus="lowerLayerDown"} 0
 ```
 So *EnumAsStateSet* should be used for things that represent state or that you might want to alert on. For example the link state, is it up or down, is it in an error state, whether a panel is open or closed etc. Please be careful to not use this for high cardinality values as it will generate 1 time series per possible value.
 
+# Examples
+
+This repository contains the following generator files:
+- [generator.yml](./generator.yml): Misc targets maintained by the upstream (not recommended for production).
+- [generator.apc.yml](./generator.apc.yml): tuned for our APC UPS SURTXLI 8 and 10Ks as well as APC Automatic Transfer Switches (ATS).
+- [generator.cisco.yml](./generator.cisco.yml) tuned for the Cisco switches (basically 3560 \* and Nexus 3000 switches like C3232C) we use.
+- [generator.rittal.yml](./generator.rittal.yml) tuned for Rittal Liquid Cooling Packages (old CMC II driven alias lcpII and recent CMC III driven alias lcpIIIa and depending on the current config lcpIIIb\_V3 and lcpIIIb\_V4).
+
+For easier testing and adjustments we use in the latter 3 files YAML features like anchors and aliases because this crap does not support multi-line comments and is a pure maintenance nightmare. To use them a [modified version of snakeyaml](https://github.com/jelmd/snakeyaml) is needed to translate it to a YAML spec compatible file before we can feed it into the generator. However, there is probably not a single correct, bug free YAML implementation in this world and thus snakeyaml has its own problems and this + the required modifications we need sometimes lead to confusing results. So the best thing one can do is simply use a better preprocessor or none at all, or maintain your configuration as a json formatted file, which will work for both, the generator as well as the exporter.
+
 
 # Where to get MIBs
 
