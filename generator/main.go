@@ -115,7 +115,7 @@ func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger)
 		return fmt.Errorf("error parsing generated config: %s", err)
 	}
     annotateOIDs(&node, nameToNode)
-	out, err = yaml.Marshal(&node)
+	out, _ = yaml.Marshal(&node)
 
 	// Check the generated config to catch auth/version issues.
 	err = yaml.Unmarshal(out, &config.Config{})

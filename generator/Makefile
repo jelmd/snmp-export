@@ -60,10 +60,12 @@ clean:
 
 DOLLAR := '$$'
 
+ELFEDIT ?= $(shell test `uname -s` = SunOS && printf /usr/bin/elfedit || printf true )
+
 generator: *.go
 	go build -trimpath -ldflags '-extldflags -zignore' -ldflags '-extldflags -zdefs'
-	ADDR=`/usr/bin/elfedit -e 'dyn:runpath -o num' generator` && \
-	/usr/bin/elfedit -e "str:set -shnam .dynstr -strndx $$ADDR $(DOLLAR)ORIGIN:$(DOLLAR)ORIGIN/../lib/amd64" generator
+	ADDR=`$(ELFEDIT) -e 'dyn:runpath -o num' generator` && \
+	$(ELFEDIT) -e "str:set -shnam .dynstr -strndx $$ADDR $(DOLLAR)ORIGIN:$(DOLLAR)ORIGIN/../lib/amd64" generator
 
 generate: generator mibs
 	MIBDIRS=$(MIB_PATH) ./generator --fail-on-parse-errors generate
