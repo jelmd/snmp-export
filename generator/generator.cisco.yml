@@ -148,8 +148,6 @@ modules:
       - cpmCPUTotal1minRev			# 1.3.6.1.4.1.9.9.109.1.1.1.1.7
       - cpmCPUTotal5minRev			# 1.3.6.1.4.1.9.9.109.1.1.1.1.8
       - cpmCPUTotal5secRev			# 1.3.6.1.4.1.9.9.109.1.1.1.1.6
-      - cpmCPUMemoryUsed			# 1.3.6.1.4.1.9.9.109.1.1.1.1.12
-      - cpmCPUMemoryFree			# 1.3.6.1.4.1.9.9.109.1.1.1.1.13
 
     overrides: &cpmCPUTotalTable_overrides
       cpmCPUMonInterval:
