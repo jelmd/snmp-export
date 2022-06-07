@@ -129,7 +129,7 @@ common-style:
 common-check_license:
 	@echo ">> checking license header"
 	@licRes=$$(for file in $$(find . -type f -iname '*.go' ! -path './vendor/*') ; do \
-               awk 'NR<=3' $$file | grep -Eq "(Copyright|generated|GENERATED)" || echo $$file; \
+		awk '/License|Copyright|generated|GENERATED/ { exit 0; } { if (NR > 3) { print FILENAME; exit 1}}' $$file ; \
        done); \
        if [ -n "$${licRes}" ]; then \
                echo "license header checking failed:"; echo "$${licRes}"; \
