@@ -38,6 +38,10 @@ var combinedTypes = map[string]string{
 	"LldpPortId":             "LldpPortIdSubtype",
 }
 
+// Just to avoid endles loops if someone gets too creative wrt. brace expressions
+const maxBraceExpansionRounds = 1000
+const maxBraceNestingDepth = 1000
+
 // Helper to walk MIB nodes.
 func walkNode(n *Node, f func(n *Node)) {
 	f(n)
@@ -257,24 +261,445 @@ func getMetricNode(oid string, node *Node, nameToNode map[string]*Node) (*Node, 
 	return n, oidInstance
 }
 
+
+func expandOverrides(s string, logger log.Logger) []string {
+	if len(s) < 1 {
+		return []string{}
+	}
+
+	a := strings.Split(s, "¦")
+	if strings.IndexByte(s, '{') == -1 {
+		return a
+	}
+
+	res := []string{}
+	for _, o := range a {
+		if len(o) == 0 {
+			continue
+		}
+		l, _ := expandBraces(o, 0, logger);
+		res = append(res, l...)
+	}
+	return res
+}
+
+func expandList(prefix string, list []string, suffix string, brace bool, depth int, logger log.Logger) string {
+	// e.g. ucb/   ex,edit   ,lib/{ex,how_ex} => ucb/ex,ucb/edit,lib/{ex,how_ex}
+	if len(list) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	pprefix := ""
+	iprefix := ","  + prefix
+	isuffix := suffix
+	psuffix := ""
+	i := -1
+	if depth > 0 {
+		i = strings.LastIndexByte(prefix, ',')
+	}
+	if i != -1 {
+		pprefix = prefix[:i+1]
+		iprefix = prefix[i:]
+	}
+	// i = strings.IndexByte(suffix, ',') doesn't always work
+	brace_count := 0
+	i = -1
+	if depth > 0 {
+		for k := 0; k < len(suffix); k++ {
+			if suffix[k] == ',' && brace_count == 0 {
+				i = k
+				break;
+			}
+			if suffix[k] == '{' && (k == 0 || suffix[k-1] != '\\') {
+				brace_count++
+			} else if suffix[k] == '}' && (k == 0 || suffix[k-1] != '\\') && brace_count != 0 {
+				brace_count--
+			}
+		}
+	}
+	if i != -1 {
+		isuffix = suffix[:i]
+		psuffix = suffix[i:]
+	}
+	level.Debug(logger).Log("ListExpansion",
+		prefix + "|" + strings.Join(list, "¦") + "|" + suffix,
+		"pprefix", pprefix, "iprefix", iprefix, "isuffix", isuffix, "psuffix", psuffix, "brace", brace)
+
+	for _,s := range list {
+		for _,t := range strings.Split(s, ",") {
+			sb.WriteString(iprefix)
+			sb.WriteString(t)
+			sb.WriteString(isuffix)
+		}
+	}
+	t := ""
+	if brace {
+		t = pprefix + "{" + sb.String()[1:] + "}" + psuffix
+	} else {
+		t = pprefix + sb.String()[1:] + psuffix
+	}
+	level.Debug(logger).Log("ListExpansion_result", t)
+	return t
+}
+
+func expandBraces(s string, depth int, logger log.Logger) ([]string, bool) {
+	/*
+	If l1,l2 are either all lower case or all upper case letters in C locale,
+	n1,n2,n3 signed numbers, and
+	fmt a string specified as in fmt.Printf we support the following
+	brace expansions similar to ksh93:
+		(1) `{s[,s1]...}`
+		(2) `{l1..l2[..n3][%fmt]}`
+		(3) `{n1..n2[..n3][%fmt]}`
+	The curly braces, dots and percent sign are literals, the brackets mark an
+	optional part of the brace expression - need to be ommitted.
+
+	In the first form the function iterates over the comma separated list of
+	strings and generates for each member a new string by replacing the brace
+	expression with the member.
+	E.g. `foo{bar,sel,l}` becomes `foobar|foosel|fool`.
+
+	In the second and third form the generator iterates from l1 through l2
+	or n1 through n2 using the given step width n3. If n3 is not given, it
+	gets set to 1 or -1 depending on the first and second argument. If %fmt
+	is given, it will be used to create the string from the generated character
+	or number. Otherwise `%c` (2nd form) or `%d`(3rd form) will be used.
+
+	Finally a new list of strings gets generated, where the brace expression
+	gets replaced by the members of the one-letter list one-by-one.
+	E.g. `chapter{A..F}.1` becomes
+	`chapterA.1|chapterB.1|chapterC.1|chapterD.1|chapterE.1|chapterF.1`,
+	and `{a,z}{1..5..3%02d}{b..c}x` expands to 2x2x2 == 8 strings:
+    `a01bx|a01cx|a04bx|a04cx|z01bx|z01cx|z04bx|z04cx`.
+
+	One may escape curly braces with a backslash(`\`), but since they are not
+	allowed in metric names, it doesn't make much sense for the generator case.
+	Any brace expression which cannot be parsed or uses invalid arguments gets
+	handled as literal without the enclosing curly braces. Note that in the
+	2nd form only ASCII letters in the range of `a-z` and `A-Z` are accepted,
+	only.
+	*/
+	if len(s) == 0 {
+		return []string{ s } , false
+	}
+	if depth >= maxBraceNestingDepth {
+			level.Warn(logger).Log("msg", fmt.Sprintf("Brace expansion aborted because of too many nested brace expressions (%d). Check '%s' for brace insertion.", depth, s))
+			return []string{ s } , false
+	}
+
+	level.Debug(logger).Log("Expand_Brace", s, "depth", depth)
+	src := []string{ s }
+	src_modified := []bool{ true }
+	res := []string{}
+	res_modified := []bool{}
+	modified := true
+	count := 0
+	for modified {
+		if count >= maxBraceExpansionRounds {
+			level.Warn(logger).Log("msg", fmt.Sprintf("Brace expansion aborted: still not fully expanded after %d rounds. Check '%s' for brace insertion.", count, s))
+			return []string{ s } , false
+		}
+		count++
+		level.Debug(logger).Log("Depth", depth, "count", count,
+			"src", strings.Join(src, ","))
+		modified = false
+		for i, t := range src {
+			if ! src_modified[i] {
+				// since we need to keep the order this is much simpler instead
+				// of taking them out from src and do add. book keeping
+				res = append(res, t)
+				res_modified = append(res_modified, false)
+				continue
+			}
+			b := -1
+			e := -1
+			for k:= 0 ; k < len(t); k++ {
+				if t[k] == '{' && (k == 0 || t[k-1] != '\\') {
+					b = k
+					break
+				}
+			}
+			if b != -1 {
+				open := 0
+				// find the closing brace
+				for k:= b+1 ; k < len(t); k++ {
+					if t[k] == '}' && t[k-1] != '\\' {
+						if open == 0 {
+							e = k
+							break
+						}
+						open--
+					} else if t[k] == '{' && t[k-1] != '\\' {
+						open++
+					}
+				}
+			}
+			if (b != -1 || e != -1) && (b == -1 || e == -1 || b > e) {
+				res = append(res, t)		// unbalanced
+				res_modified = append(res_modified, false)
+				continue
+			}
+			if b == -1 {
+				res = append(res, t)		// no braces
+				res_modified = append(res_modified, false)
+				continue
+			}
+			prefix := t[:b]
+			suffix := t[e+1:]
+			expr := t[b+1:e]
+			level.Debug(logger).Log("Prefix",prefix,"Suffix",suffix,"Expr",expr)
+			l, mod := expandBraces(expr, depth + 1, logger)
+			if mod {
+				if (depth > 0) {
+					t = expandList(prefix, l, suffix, true, depth, logger)
+					res = append(res, t)
+				} else {
+					t = strings.Join(l, ",")
+					res = append(res, prefix + "{" + t + "}" + suffix)
+				}
+				level.Debug(logger).Log("Re-insert", t,
+					"depth", depth, "count", count,)
+				res_modified = append(res_modified, true)
+				modified = true
+				continue
+			}
+			// not modified, so expand ranges
+			//idx := strings.LastIndexByte(prefix, ',')
+			t, mod := expandRange(expr, logger)
+			if mod {
+				modified = true
+				res = append(res, prefix + "{" + t + "}" + suffix)
+				res_modified = append(res_modified, true)
+				continue
+			}
+			// range not modified, so expand commas
+			level.Debug(logger).Log("Splitting", expr)
+			mod = false
+			xl :=  strings.Split(expr, ",")
+			if len(xl) > 1 {
+				modified = true
+				mod = true
+			}
+			t = expandList(prefix, xl, suffix, false, depth, logger)
+			if depth > 0 {
+				res = append(res, t)
+				res_modified = append(res_modified, mod)
+			} else {
+				for _, t := range xl {
+					res = append(res, prefix + t + suffix)
+					res_modified = append(res_modified, mod)
+				}
+			}
+		}
+
+		if modified {
+			src = res
+			res = []string{}
+			src_modified = res_modified
+			res_modified = []bool{}
+		} else {
+			level.Debug(logger).Log("Done_round",count,
+				"res", strings.Join(res, "¦"))
+		}
+	}
+	level.Debug(logger).Log("depth",depth, "Returning", strings.Join(res, "¦"))
+	return res , count > 1
+}
+
+func expandRange(expr string, logger log.Logger) (string, bool) {
+	if len(expr) < 4 {
+		return expr , false
+	}
+	level.Debug(logger).Log("Expanding_range", expr)
+	idx := strings.Index(expr, "..")
+	if idx == -1 {
+		return expr , false
+	}
+
+	var sb strings.Builder
+	start := expr[:idx]
+	stop := expr[idx+2:]
+	step := ""
+	var sw int64 = 0
+	fmtspec := ""
+
+	// n3
+	idx = strings.Index(stop, "..")
+	if idx != -1 {
+		step = stop[idx+2:]
+		stop = stop[:idx]
+	}
+
+	// %fmt
+	if len(step) == 0 {
+		fidx := strings.IndexByte(stop, '%')
+		if fidx != -1 {
+			fmtspec = stop[fidx:]
+			stop = stop[:fidx]
+		}
+	} else {
+		fidx := strings.IndexByte(step, '%')
+		if fidx != -1 {
+			fmtspec = step[fidx:]
+			step = step[:fidx]
+		}
+	}
+	if len(step) != 0 {
+		swo, err := strconv.ParseInt(step, 0, 64)
+		if err != nil || swo == 0 {
+			return expr , false
+		}
+		sw = swo
+	}
+	level.Debug(logger).Log("Range_params", ":",
+		"start",start, "stop",stop, "step", step, "fmt", fmtspec)
+	if  len(start) == 1 && len(stop) == 1 &&
+		(start[0] < '0' || start[0] > '9' || stop[0] < '0' || stop[0] > '9') {
+		level.Debug(logger).Log("RangeType", "l1..l2")
+		// l1..l2
+		b := start[0]
+		e := stop[0]
+		reverse := false
+		if b > e {
+			reverse = true
+			c := b
+			b = e
+			e = c
+		}
+		if e >= 'a' {
+			if b < 'a' || e > 'z' {
+				return expr , false
+			}
+		} else if e >= 'A' {
+			if b < 'A' || e > 'Z' {
+				return expr , false
+			}
+		} else {
+			return expr , false
+		}
+		if reverse {
+			c := b
+			b = e
+			e = c
+		}
+		if (sw == 0) {
+			sw = 1
+			if b > e {
+				sw = -1
+			}
+		}
+		if (b > e) && (sw > 0) {
+			// invalid step width
+			return expr , false
+		}
+		var w byte = byte(sw)
+		if len(fmtspec) == 0 {
+			fmtspec = "%c"
+		} else {
+			t := fmt.Sprintf(fmtspec, b)
+			if strings.HasPrefix(t, "%!") {
+				return expr , false		// invalid format specifier
+			}
+		}
+		level.Debug(logger).Log("Range_params", ":",
+			"start",b, "stop",e, "step",w, "fmt", fmtspec)
+		if b <= e {
+			for i := b; i <= e; i += w {
+				sb.WriteString(",")
+				sb.WriteString(fmt.Sprintf(fmtspec, i))
+			}
+		} else {
+			for i := b; i >= e; i += w {
+				sb.WriteString(",")
+				sb.WriteString(fmt.Sprintf(fmtspec, i))
+			}
+		}
+		level.Debug(logger).Log("Range_Result", sb.String()[1:])
+		return sb.String()[1:] , true
+	}
+
+	level.Debug(logger).Log("RangeType", "n1..n2")
+	b, err := strconv.ParseInt(start, 0, 64)
+	if err != nil {
+		return  expr , false
+	}
+	e, err := strconv.ParseInt(stop, 0, 64)
+	if err != nil {
+		return  expr , false
+	}
+	if len(fmtspec) == 0 {
+		fmtspec = "%d"
+	} else {
+		t := fmt.Sprintf(fmtspec, b)
+		if strings.HasPrefix(t, "%!") {
+			return expr , false		// invalid format specifier
+		}
+	}
+	if sw == 0 {
+		sw = 1
+		if b > e {
+			sw = -1
+		}
+	} else if (b > e && sw > 0) || (b < e && sw < 0) {
+		return fmt.Sprintf(fmtspec, b), true
+	}
+	if b <= e {
+		for i := b; i <= e; i += sw {
+			sb.WriteString(",")
+			sb.WriteString(fmt.Sprintf(fmtspec, i))
+		}
+	} else {
+		for i := b; i >= e; i += sw {
+			sb.WriteString(",")
+			sb.WriteString(fmt.Sprintf(fmtspec, i))
+		}
+	}
+
+	level.Debug(logger).Log("Range_Result", sb.String()[1:])
+	return sb.String()[1:], true
+}
+
 func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNode map[string]*Node, logger log.Logger) (*config.Module, error) {
 	out := &config.Module{}
 	needToWalk := map[string]struct{}{}
 	tableInstances := map[string][]string{}
+	ignore := map[string]bool{}
+	relink := map[string]string{}
 
 	// Apply type overrides for the current module.
-	for name, params := range cfg.Overrides {
-		if params.Type == "" || name == "_dummy" {
-			continue
+	for key, params := range cfg.Overrides {
+		level.Debug(logger).Log("module", mname, "Override", key, "TypeToForce", params.Type)
+		mnames := expandOverrides(key, logger)
+		if len(mnames) > 1 {
+			// expand once, only.
+			t := strings.Join(mnames, "¦")
+			level.Debug(logger).Log("module", mname, "OverrideResult", t)
+			if key != t {
+				relink[key] = t
+			}
 		}
-		// Find node to override.
-		n, ok := nameToNode[name]
-		if !ok {
-			level.Warn(logger).Log("msg", "Could not find node to override type", "module", mname, "node", name)
-			continue
+		for _, name := range mnames {
+			if name == "_dummy" {
+				continue
+			}
+			ignore[name] = params.Ignore
+			if params.Type == "" {
+				continue
+			}
+			// Find node to override.
+			n, ok := nameToNode[name]
+			if !ok {
+				level.Warn(logger).Log("msg", "Could not find node to override type - name ignored", "module", mname, "node", name)
+				continue
+			}
+			// params.Type validated on unmarshall
+			level.Debug(logger).Log("module", mname, "metric", name, "metricType", n.Type, "forcedTo", params.Type)
+			n.Type = params.Type
 		}
-		// params.Type validated at generator configuration.
-		n.Type = params.Type
+	}
+	for key, val := range relink {
+		cfg.Overrides[val] = cfg.Overrides[key]
+		delete(cfg.Overrides, key)
 	}
 
 	// Remove redundant OIDs to be walked.
@@ -337,7 +762,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				return // Inaccessible metrics.
 			}
 
-			if cfg.Overrides[n.Label].Ignore {
+			if ignore[n.Label] {
 				return // Ignored metric.
 			}
 
@@ -459,7 +884,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				continue
 			}
 
-			oid_name := strings.Split(lookup.Lookup, "|")
+			oid_name := strings.Split(lookup.Lookup, "¦")
 			last := len(oid_name) - 1
 			if l.Inject {
 nextLabel:
@@ -514,7 +939,7 @@ nextLabel:
 				}
 				typ, ok := metricType(indexNode.Type)
 				if !ok {
-					return nil, fmt.Errorf("unknown index type %s for %s (module: %s)", indexNode.Type, label, mname)
+					return nil, fmt.Errorf("unknown index type %s for %s::%s", indexNode.Type, mname, label)
 				}
 				l.Type = append(l.Type, typ)
 				l.Oid = append(l.Oid, indexNode.Oid)
@@ -613,8 +1038,7 @@ nextLabel:
 	}
 
 	// Apply module config overrides to their corresponding metrics.
-	for mname, params := range cfg.Overrides {
-		s := sanitizeMetricName(mname, cfg.Prefix)
+	for key, params := range cfg.Overrides {
 		for suffix, regexpair := range params.RegexpExtracts {
 			var t string
 			if len(suffix) > 0 && (suffix[0] == '.' || suffix[0] == '^') {
@@ -631,11 +1055,15 @@ nextLabel:
 				params.RegexpExtracts[t] = regexpair
 			}
 		}
-		for _, metric := range out.Metrics {
-			if s == metric.Name || s == sanitizeMetricName(metric.Oid, cfg.Prefix) {
-				metric.RegexpExtracts = params.RegexpExtracts
-				metric.Remap = params.Remap
-				metric.Rename = params.Rename
+		mnames := strings.Split(key, "¦")
+		for _, mname := range mnames {
+			s := sanitizeMetricName(mname, cfg.Prefix)
+			for _, metric := range out.Metrics {
+				if s == metric.Name || s == sanitizeMetricName(metric.Oid, cfg.Prefix) {
+					metric.RegexpExtracts = params.RegexpExtracts
+					metric.Remap = params.Remap
+					metric.Rename = params.Rename
+				}
 			}
 		}
 	}

@@ -168,7 +168,7 @@ modules:
     lookups: &cpmCPUTotalTable_lookups
       - source_indexes: [cpmCPUTotalIndex]
         mprefix: [cpmCPU]
-        lookup: cpmCPUTotalPhysicalIndex|entPhysicalName
+        lookup: cpmCPUTotalPhysicalIndex¦entPhysicalName
         rename: cpu
         revalue:
           regex: '([^ ]+).*'
