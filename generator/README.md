@@ -83,7 +83,7 @@ modules:
           ...
 
     overrides:                             # Optional with one or more:
-      metricName:                          #   Mandatory.
+      metricNameList:                      #   Mandatory.
         ignore: boolVal                    #     Default: false
         type: newType                      #     Default: '' (i.e. keep type as is)
         regex_extracts:                    #     Optional with one or more:
@@ -337,7 +337,7 @@ Negate the outcome of the regex match. I.e. if `invert` is `false` (the default)
 #### value: _newValue_
 Replace the value of the related label with the given _newValue_ if _regexExpr_ matched the current value of the label. Capture-groups using `$num` are supported.
 
-Special: If _newValue_ results into `@drop@`, the metric gets dropped. So in contrast to *overrides*._metricName_.*ignore*.*true* it allows one to drop a metric not by its name but by its label value(s). E.g. if one has an Switch with a lot of transceiver on is usually not really interested in voltage/current/temperature, but retrieving the whole table is much faster than retrieving the single entries one is interested in, one may use this feature to get rid off it immediately and thus saves the prometheus client a lot of work and energy of course.
+Special: If _newValue_ results into `@drop@`, the metric gets dropped. So in contrast to *overrides*._metricNameList_.*ignore*.*true* it allows one to drop a metric not by its name but by its label value(s). E.g. if one has an Switch with a lot of transceiver on is usually not really interested in voltage/current/temperature, but retrieving the whole table is much faster than retrieving the single entries one is interested in, one may use this feature to get rid off it immediately and thus saves the prometheus client a lot of work and energy of course.
 
 A real world example showing such a case is:
 ```
@@ -378,8 +378,44 @@ This is the same as `remap`, but the lookup key gets formed by the *subOid* of t
 ## overrides
 The `override` config deals with metric names and values. E.g. it allows one to drop metrics based on its value, change the metric's name, modify/remap the metric value, or to change its representation type (gauge, counter, etc.).
 
-### _metricName_
-The name of the metric to which this override should be applied.
+### _metricNameList_
+The names of the metrics aka SNMP variables seprated by a vertical bar (pipe) symbol to which this override should be applied. It is not possible to use wildcards here, however, since version 1.1. you may use generic names (similar to ksh93), which will help a lot when dealing e.g. with HP printers:
+
+If `l1`,`l2` are either all lower case or all upper case letters in C locale,
+`n1`,`n2`,`n3` signed numbers, and
+`fmt` a string specified as in [fmt.Printf()](https://pkg.go.dev/fmt#hdr-Printing) the following
+brace expansions are supported:
+- (1) `{s[,s1]...}`
+- (2) `{l1..l2[..n3][%fmt]}`
+- (3) `{n1..n2[..n3][%fmt]}`
+
+The curly braces, dots and percent sign are literals, the brackets mark an
+optional part of the brace expression - need to be ommitted.
+
+In the first form the generator iterates over the comma separated list of
+strings and creates for each member a new string by replacing the brace
+expression with the member.
+E.g. `foo{bar,sel,l}` becomes `foobar|foosel|fool`.
+
+In the second and third form the generator iterates from `l1` through `l2`
+or `n1` through `n2` using the given step width `n3`. If `n3` is not given, it
+gets set to `1` or `-1` depending on the first and second argument. If `%fmt`
+is given, it will be used to create the string from the generated character
+or number. Otherwise `%c` (2nd form) or `%d`(3rd form) will be used.
+
+Finally a new list of strings gets generated, where the brace expression
+gets replaced by the members of the one-letter or number list one-by-one.
+E.g. `chapter{A..F}.1` becomes
+`chapterA.1|chapterB.1|chapterC.1|chapterD.1|chapterE.1|chapterF.1`,
+and `{a,z}{1..5..3%02d}{b..c}x` expands to 2x2x2 == 8 strings:
+`a01bx|a01cx|a04bx|a04cx|z01bx|z01cx|z04bx|z04cx`.
+
+One may escape curly braces with a backslash(`\`) to get it ignored, but since they are not
+allowed in metric names, it doesn't make much sense for the generator case.
+Any brace expression which cannot be parsed or uses invalid arguments gets
+handled as literal without the enclosing curly braces. Note that in the
+2nd form ASCII letters in the range of `a-z` and `A-Z` are accepted, only.
+
 
 #### type: _newType_
 Set the type used to convert the received SNMP value (collection of one or more bytes) to the metric value string to _newType_. By default it gets deduced from the SNMP object's SYNTAX within the MIB. Allowed types are:

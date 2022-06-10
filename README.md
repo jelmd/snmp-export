@@ -17,6 +17,7 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - replacing the metric name based on its value regex match or sub OID
 - dropping labels based on label value regex match
 - remapping metric as well as label values
+- generic overrides
 - non-numeric override regex\_extracts results, i.e. consistent behavior as without an override: for non-float values insert a label=value pair and set metric value = 1.0.
 - counter, gauge, Float, DateAndTime in override regex\_extracts (value gets converted to its decimal string representation first). So no need to force its type to e.g. DisplayString anymore, which would in turn cause its value to be set to 1.0.
 - injection of non-index based labels and related PDU values
