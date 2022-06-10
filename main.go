@@ -27,8 +27,6 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/exporter-toolkit/web"
 	webflag "github.com/prometheus/exporter-toolkit/web/kingpinflag"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -48,6 +46,8 @@ var (
 	listenAddress = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Short('l').Default(":9116").String()
 	dryRun        = kingpin.Flag("dry-run", "Only verify configuration is valid and exit.").Short('n').Default("false").Bool()
 	verbose = kingpin.Flag("verbose", "Same as --log.level=debug.").Short('v').Default("false").Bool()
+	lvl = kingpin.Flag("loglevel", "Max. severity of messages to log (debug|info|warn|error).").Short('L').Default("info").String()
+	json = kingpin.Flag("json", "Use json format for logs.").Short('J').Default("false").Bool()
 
 	// Metrics about the SNMP exporter itself.
 	snmpDuration = prometheus.NewSummaryVec(
@@ -152,19 +152,30 @@ func (sc *SafeConfig) ReloadConfig(configFile string) (err error) {
 }
 
 func main() {
-	promlogConfig := &promlog.Config{}
-	flag.AddFlags(kingpin.CommandLine, promlogConfig)
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 	if *verbose {
-		promlogConfig.Level.Set("debug")
+		*lvl = "debug"
 	}
-	logger := promlog.New(promlogConfig)
-	if promlogConfig.Level != nil && promlogConfig.Level.String() == "debug" {
-		DebugEnabled = true
+	DebugEnabled = *lvl == "debug"
+
+	var logger log.Logger
+	if *json {
+		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
 	} else {
-		DebugEnabled = false
+		logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	}
+	if DebugEnabled {
+		logger = level.NewFilter(logger, level.AllowDebug())
+	} else if *lvl == "warn" {
+		logger = level.NewFilter(logger, level.AllowWarn())
+	} else if *lvl == "error" {
+		logger = level.NewFilter(logger, level.AllowError())
+	} else /* if lvl == "info" */ {
+		logger = level.NewFilter(logger, level.AllowInfo())
+	}
+	ts := log.TimestampFormat( func() time.Time { return time.Now() }, "2022-06-10_15:04:05.000", )
+	logger = log.With(logger, "ts", ts, "caller", log.DefaultCaller)
 
 	level.Info(logger).Log("msg", "Starting snmp_exporter", "version", Version)
 

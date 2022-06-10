@@ -689,7 +689,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			// Find node to override.
 			n, ok := nameToNode[name]
 			if !ok {
-				level.Warn(logger).Log("msg", "Could not find node to override type - name ignored", "module", mname, "node", name)
+				level.Warn(logger).Log("msg", "SNMP variable not found -> ignored", "module", mname, "name", name)
 				continue
 			}
 			// params.Type validated on unmarshall

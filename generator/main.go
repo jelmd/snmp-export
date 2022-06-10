@@ -21,11 +21,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/common/promlog/flag"
 	"gopkg.in/alecthomas/kingpin.v2"
 	yaml "gopkg.in/yaml.v3"
 
@@ -143,14 +142,37 @@ var (
 	parseErrorsCommand = kingpin.Command("parse_errors", "Debug: Print the parse errors output by NetSNMP")
 	dumpCommand        = kingpin.Command("dump", "Debug: Dump the parsed and prepared MIBs")
 	configFile         = kingpin.Flag("config.file", "Path to configuration file.").Default("generator.yml").Short('f').String()
+	verbose = kingpin.Flag("verbose", "Same as -l debug.").Short('v').Default("false").Bool()
+	lvl = kingpin.Flag("loglevel", "Max. severity of messages to log (debug|info|warn|error).").Short('L').Default("info").String()
+	json = kingpin.Flag("json", "Use json format for logs.").Short('J').Default("false").Bool()
+	DebugEnabled = false
 )
 
 func main() {
-	promlogConfig := &promlog.Config{}
-	flag.AddFlags(kingpin.CommandLine, promlogConfig)
 	kingpin.HelpFlag.Short('h')
 	command := kingpin.Parse()
-	logger := promlog.New(promlogConfig)
+	if *verbose {
+		*lvl = "debug"
+	}
+	DebugEnabled = *lvl == "debug"
+
+	var logger log.Logger
+	if *json {
+		logger = log.NewJSONLogger(log.NewSyncWriter(os.Stderr))
+	} else {
+		logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	}
+	if DebugEnabled {
+		logger = level.NewFilter(logger, level.AllowDebug())
+	} else if *lvl == "warn" {
+		logger = level.NewFilter(logger, level.AllowWarn())
+	} else if *lvl == "error" {
+		logger = level.NewFilter(logger, level.AllowError())
+	} else /* if lvl == "info" */ {
+		logger = level.NewFilter(logger, level.AllowInfo())
+	}
+	ts := log.TimestampFormat( func() time.Time { return time.Now() }, "15:04:05.000", )
+	logger = log.With(logger, "ts", ts, "caller", log.DefaultCaller)
 
 	parseOutput, err := initSNMP(logger)
 	if err != nil {
