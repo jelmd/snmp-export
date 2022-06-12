@@ -816,10 +816,23 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 
 	// Apply lookups.
 
-	// first normalize possible metric prefixes
+	// first normalize possible metric prefixes and compile regex if needed
+	mprefix_re := map[string]*regexp.Regexp{}
 	for _, lookup := range cfg.Lookups {
-		for n, mname := range lookup.Mprefix {
-			lookup.Mprefix[n] = sanitizeMetricName(strings.TrimSpace(mname), cfg.Prefix)
+		for n, name := range lookup.Mprefix {
+			if name[0] == '_' {
+				// regex variant
+				if len(cfg.Prefix) != 0 {
+					lookup.Mprefix[n] = "_" + cfg.Prefix + name
+				}
+				x, err := regexp.Compile("^(?:" + lookup.Mprefix[n][1:] + ")")
+				if err != nil {
+					return nil, fmt.Errorf("invalid mprefix regex '%s' (module: %s)", name, mname)
+				}
+				mprefix_re[lookup.Mprefix[n]] = x
+			} else {
+				lookup.Mprefix[n] = sanitizeMetricName(strings.TrimSpace(name), cfg.Prefix)
+			}
 		}
 	}
 
@@ -837,10 +850,24 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		}
 		lookupSeen := map[string]int{}
 		for _, lookup := range cfg.Lookups {
+			mprefix_idxs := [][]int{}
+			mprefix_used := ""
 			if len(lookup.Mprefix) > 0 {
 				found := false
 				for _, mname := range lookup.Mprefix {
-					if strings.HasPrefix(metric.Name, mname) || strings.HasPrefix(metric.Oid, mname) {
+					if mname[0] == '_' {
+						// need the official name here
+						n, _ := nameToNode[metric.Oid]
+						mprefix_idxs = mprefix_re[mname].FindAllStringSubmatchIndex(n.Label, -1)
+						level.Debug(logger).Log("mprefix", mname, "metric", n.Label, "matched", len(mprefix_idxs) != 0)
+						if len(mprefix_idxs) == 0 {
+							continue
+						}
+						// match: TBD: keep indexes
+						mprefix_used = mname
+						found = true
+						break
+					} else if strings.HasPrefix(metric.Name, mname) || strings.HasPrefix(metric.Oid, mname) {
 						found = true
 						break
 					}
@@ -890,9 +917,24 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 nextLabel:
 				for  c, label := range oid_name {
 					// add as pseudo index so that we get subOids as needed
+					orig_label := ""
+					if len(mprefix_idxs) > 0 && strings.IndexByte(label, '$') != -1 {
+						b := []byte{}
+						for _, submatches := range mprefix_idxs {
+							b = mprefix_re[mprefix_used].ExpandString(b, label, metric.Name, submatches)
+						}
+						if len(b) != 0 {
+							orig_label = label
+							label = string(b)
+						}
+					}
 					idxNode, ok := nameToNode[label]
 					if !ok {
-						return nil, fmt.Errorf("Could not find pseudo index '%s' for %s::%s", label, mname, metric.Name)
+						if len(orig_label) != 0 {
+							return nil, fmt.Errorf("Could not find generated pseudo index '%s' for %s::%s (orig: %s)", label, mname, metric.Name, orig_label)
+						} else {
+							return nil, fmt.Errorf("Could not find pseudo index '%s' for %s::%s", label, mname, metric.Name)
+						}
 					}
 					for _, midx := range metric.Indexes {
 						if midx.Oid == idxNode.Oid {
@@ -932,10 +974,25 @@ nextLabel:
 				if label == "_dummy" {
 					continue
 				}
+				orig_label := ""
+				if len(mprefix_idxs) > 0 && strings.IndexByte(label, '$') != -1 {
+					b := []byte{}
+					for _, submatches := range mprefix_idxs {
+						b = mprefix_re[mprefix_used].ExpandString(b, label, metric.Name, submatches)
+					}
+					if len(b) != 0 {
+						orig_label = label
+						label = string(b)
+					}
+				}
 				var ok bool
 				indexNode, ok = nameToNode[label]
 				if !ok {
-					return nil, fmt.Errorf("unknown index '%s' (module: %s)", lookup.Lookup, mname)
+					if len(orig_label) != 0 {
+						return nil, fmt.Errorf("Could not find index '%s' for %s::%s (orig: %s)", label, mname, metric.Name, orig_label)
+					} else {
+						return nil, fmt.Errorf("Could not find index '%s' for %s::%s", label, mname, metric.Name)
+					}
 				}
 				typ, ok := metricType(indexNode.Type)
 				if !ok {
