@@ -260,7 +260,7 @@ The metric selector to which the lookup gets applied. Only if the related SNMP o
 ```
 The OID of `cmcIIIVarName` is `1.3.6.1.4.1.2606.7.4.2.2.1.3`. If the value of the `cmcIIIVarDeviceIndex` is `123` and the value of `cmcIIIVarIndex` is `345` the exporter would lookup `1.3.6.1.4.1.2606.7.4.2.2.1.3.123.345` to get the value for the label `cmcIIIVarName`, which gets finally renamed to `name`.
 
-If `source_indexes` contains an empty list, and a lookup value is given, the lookup result gets inserted into the related metric as a new label. The label name is the same as the lookup name, the label value the lookup result. If the lookup value is a chain (i.e. it contains `|`), the value gets split into a list of lookup names, which finally get all inserted as labels into the metric. However, a possible `rename` and/or `revalue` option gets applied to the last lookup within the list, only. So if one needs to mangle all, one should configure a single lookup for each label. E.g.:
+If `source_indexes` contains an empty list, and a lookup value is given, the lookup result gets inserted into the related metric as a new label. The label name is the same as the lookup name, the label value the lookup result. If the lookup value is a chain (i.e. it contains `¦`), the value gets split into a list of lookup names, which finally get all inserted as labels into the metric. However, a possible `rename` and/or `revalue` option gets applied to the last lookup within the list, only. So if one needs to mangle all, one should configure a single lookup for each label. E.g.:
 ```
       - source_indexes: []
         mprefix: [cmcTcUnit1Status]
@@ -282,7 +282,7 @@ Another option to further narrow down, to which metrics this lookup definition g
 If set to `true`, the labels deduced from source\_indexes and all intermediate labels are finally removed from the related metric. This avoids label clutter when the new index is unique.
 
 ### lookup: _tableNameChain_
-Use the given _tableNameChain_ to lookup the value of the label. Usually this is just a single table entry name (e.g. `entPhysicalName`) - the source\_indexes name (e.g. entPhysicalIndex) gets used to map the index number to a textual aka human friendly representation. However, for some rare cases one needs an indirect lookup, to resolve the final value. In this case you name all "tables" in the required order separated by a single pipe symbol (`|`). A real world example for it is the CISCO-PROCESS-MIB:
+Use the given _tableNameChain_ to lookup the value of the label. Usually this is just a single table entry name (e.g. `entPhysicalName`) - the source\_indexes name (e.g. entPhysicalIndex) gets used to map the index number to a textual aka human friendly representation. However, for some rare cases one needs an indirect lookup, to resolve the final value. In this case you name all "tables" in the required order separated by a single broken bar (`¦`). A real world example for it is the CISCO-PROCESS-MIB:
 ```
 cpmCPUTotalTable OBJECT-TYPE
     SYNTAX          SEQUENCE OF CpmCPUTotalEntry
@@ -318,7 +318,7 @@ So the `cpmCPUTotalIndex` needs to be used to obtain the `cpmCPUTotalPhysicalInd
 ```
       - source_indexes: [cpmCPUTotalIndex]
         mprefix: [cpmCPU]
-        lookup: cpmCPUTotalPhysicalIndex|entPhysicalName
+        lookup: cpmCPUTotalPhysicalIndex¦entPhysicalName
 ```
 NOTE: A lookup may overwrite any label already inserted. So if one has more than a single lookup, take care of its order.
 
@@ -395,7 +395,7 @@ optional part of the brace expression - need to be ommitted.
 In the first form the generator iterates over the comma separated list of
 strings and creates for each member a new string by replacing the brace
 expression with the member.
-E.g. `foo{bar,sel,l}` becomes `foobar|foosel|fool`.
+E.g. `foo{bar,sel,l}` becomes `foobar¦foosel¦fool`.
 
 In the second and third form the generator iterates from `l1` through `l2`
 or `n1` through `n2` using the given step width `n3`. If `n3` is not given, it
@@ -406,9 +406,9 @@ or number. Otherwise `%c` (2nd form) or `%d`(3rd form) will be used.
 Finally a new list of strings gets generated, where the brace expression
 gets replaced by the members of the one-letter or number list one-by-one.
 E.g. `chapter{A..F}.1` becomes
-`chapterA.1|chapterB.1|chapterC.1|chapterD.1|chapterE.1|chapterF.1`,
+`chapterA.1¦chapterB.1¦chapterC.1¦chapterD.1¦chapterE.1¦chapterF.1`,
 and `{a,z}{1..5..3%02d}{b..c}x` expands to 2x2x2 == 8 strings:
-`a01bx|a01cx|a04bx|a04cx|z01bx|z01cx|z04bx|z04cx`.
+`a01bx¦a01cx¦a04bx¦a04cx¦z01bx¦z01cx¦z04bx¦z04cx`.
 
 One may escape curly braces with a backslash(`\`) to get it ignored, but since they are not
 allowed in metric names, it doesn't make much sense for the generator case.
