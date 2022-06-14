@@ -363,7 +363,7 @@ func parseDateAndTime(pdu *gosnmp.SnmpPDU) (float64, error) {
 func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger, compact bool) []prometheus.Metric {
 	var err error
 	// The part of the OID that is the indexes.
-	labels, subOid := indexesToLabels(indexOids, metric, oidToPdu, idxCache, logger)
+	labels, subOid := indexesToLabels(indexOids, metric, pdu, oidToPdu, idxCache, logger)
 	_, ok := labels["@drop@"]
 	if ok {
 		return []prometheus.Metric{}
@@ -860,13 +860,40 @@ func indexOidsAsString(indexOids []int, typ string, fixedSize int, implied bool,
 	}
 }
 
-func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) (map[string]string, string) {
+func indexesToLabels(indexOids []int, metric *config.Metric, pdu *gosnmp.SnmpPDU, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger) (map[string]string, string) {
 	labels := map[string]string{}
 	labelSubOids := map[string][]int{}
 	subOids := ""
 
 	// Prepare index info for the source indexes to lookup
+	poid := ""
 	for _, index := range metric.Indexes {
+		if index.Labelname == "_idx" {
+			if pdu == nil {
+				continue
+			}
+	if DebugEnabled {
+			level.Debug(logger).Log("indexOids", fmt.Sprintf("%v", indexOids), "moid", metric.Oid, "poid", pdu.Name[1:])
+	}
+			oid := metric.Oid
+			poid = pdu.Name[1:]	//drop the leading .
+			if strings.HasSuffix(poid, ".0") {
+				poid = poid[:len(poid)-2]
+			}
+			i := -1
+			if len(poid) < len(oid) {
+				continue
+			} else if len(poid) == len(oid) {
+				i = strings.LastIndexByte(poid, '.')
+				i = strings.LastIndexByte(poid[:i], '.')
+			} else {
+				i = len(oid)
+			}
+			s := poid[i+1:]
+			subOids += "." + s
+			idxCache[poid] = s
+			continue
+		}
 		str, subOid, tail := indexOidsAsString(indexOids, index.Type,
 			index.FixedSize, index.Implied, index.EnumValues)
 		// The text form of the subOid to lookup. Here it is the table row
@@ -936,7 +963,9 @@ func indexesToLabels(indexOids []int, metric *config.Metric, oidToPdu map[string
 		last := len(lookup.Oid) - 1
 		for c, oid := range lookup.Oid {
 			boid := oid	// just save for debug statement below
-			if lookup.Inject && c == 0 {
+			if oid == "0" {
+				oid = poid
+			} else if lookup.Inject && c == 0 {
 				oid = fmt.Sprintf("%s.%s", oid, listToOid(labelSubOids[lookup.Oid[c]]))
 				if strings.HasSuffix(oid, ".") {
 					oid = fmt.Sprintf("%s%s", oid, subOids)

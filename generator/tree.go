@@ -819,6 +819,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	// first normalize possible metric prefixes and compile regex if needed
 	mprefix_re := map[string]*regexp.Regexp{}
 	for _, lookup := range cfg.Lookups {
+		newList := []string{}
 		for n, name := range lookup.Mprefix {
 			if name[0] == '_' {
 				// regex variant
@@ -830,10 +831,18 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 					return nil, fmt.Errorf("invalid mprefix regex '%s' (module: %s)", name, mname)
 				}
 				mprefix_re[lookup.Mprefix[n]] = x
+				newList = append(newList, lookup.Mprefix[n])
 			} else {
-				lookup.Mprefix[n] = sanitizeMetricName(strings.TrimSpace(name), cfg.Prefix)
+				l := expandOverrides(strings.TrimSpace(name), logger)
+				if len(l) > 1 {
+					level.Debug(logger).Log("mprefix", name, "expanded", strings.Join(l, "¦"))
+				}
+				for _, prefix := range l {
+					newList = append(newList, sanitizeMetricName(strings.TrimSpace(prefix), cfg.Prefix))
+				}
 			}
 		}
+		lookup.Mprefix = newList
 	}
 
 	// now apply to relevant metrics
@@ -849,6 +858,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 			}
 		}
 		lookupSeen := map[string]int{}
+		_idxSeen := false
 		for _, lookup := range cfg.Lookups {
 			mprefix_idxs := [][]int{}
 			mprefix_used := ""
@@ -928,30 +938,41 @@ nextLabel:
 							label = string(b)
 						}
 					}
-					idxNode, ok := nameToNode[label]
-					if !ok {
-						if len(orig_label) != 0 {
-							return nil, fmt.Errorf("Could not find generated pseudo index '%s' for %s::%s (orig: %s)", label, mname, metric.Name, orig_label)
-						} else {
-							return nil, fmt.Errorf("Could not find pseudo index '%s' for %s::%s", label, mname, metric.Name)
-						}
-					}
-					for _, midx := range metric.Indexes {
-						if midx.Oid == idxNode.Oid {
+					var idx *config.Index
+					var idxNode *Node
+					if label == "_idx" {
+						if _idxSeen {
 							continue nextLabel
 						}
+						idx = &config.Index{Labelname: label, Type: "DisplayString", Oid: "0", IsNative: false, }
+						_idxSeen = true
+					} else {
+						ok := false
+						idxNode, ok = nameToNode[label]
+						if !ok {
+							if len(orig_label) != 0 {
+								return nil, fmt.Errorf("Could not find generated pseudo index '%s' for %s::%s (orig: %s)", label, mname, metric.Name, orig_label)
+							} else {
+								return nil, fmt.Errorf("Could not find pseudo index '%s' for %s::%s", label, mname, metric.Name)
+							}
+						}
+						for _, midx := range metric.Indexes {
+							if midx.Oid == idxNode.Oid {
+								continue nextLabel
+							}
+						}
+						idx = &config.Index{Labelname: label}
+						idx.Type, ok = metricType(idxNode.Type)
+						if !ok {
+							return nil, fmt.Errorf("No type info found for pseudo index '%s' for %s::%s", label, mname, metric.Name)
+						}
+						idx.Oid = idxNode.Oid
+						idx.FixedSize = idxNode.FixedSize
+						idx.Implied = idxNode.ImpliedIndex
+						idx.EnumValues = idxNode.EnumValues
 					}
-					idx := &config.Index{Labelname: label}
-					idx.Type, ok = metricType(idxNode.Type)
-					if !ok {
-						return nil, fmt.Errorf("No type info found for pseudo index '%s' for %s::%s", label, mname, metric.Name)
-					}
-					idx.Oid = idxNode.Oid
-					idx.FixedSize = idxNode.FixedSize
-					idx.Implied = idxNode.ImpliedIndex
-					idx.EnumValues = idxNode.EnumValues
 					metric.Indexes = append(metric.Indexes, idx)
-					if (c < last) {
+					if c < last && label != "_idx" {
 						if len(tableInstances[metric.Oid]) > 0 {
 							for _, idx := range tableInstances[metric.Oid] {
 								needToWalk[idxNode.Oid + idx + "."] = struct{}{}
@@ -972,6 +993,12 @@ nextLabel:
 			var indexNode *Node
 			for  c, label := range oid_name {
 				if label == "_dummy" {
+					continue
+				}
+				if label == "_idx" {
+					l.Type = append(l.Type, "DisplayText")
+					l.Oid = append(l.Oid, "0")
+				    l.Labelname = append(l.Labelname, renameLabel("_idx", lookup.Rename))
 					continue
 				}
 				orig_label := ""
@@ -1113,8 +1140,8 @@ nextLabel:
 			}
 		}
 		mnames := strings.Split(key, "¦")
-		for _, mname := range mnames {
-			s := sanitizeMetricName(mname, cfg.Prefix)
+		for _, name := range mnames {
+			s := sanitizeMetricName(name, cfg.Prefix)
 			for _, metric := range out.Metrics {
 				if s == metric.Name || s == sanitizeMetricName(metric.Oid, cfg.Prefix) {
 					metric.RegexpExtracts = params.RegexpExtracts
