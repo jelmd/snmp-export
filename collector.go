@@ -313,6 +313,8 @@ func getPduValue(pdu *gosnmp.SnmpPDU) float64 {
 	}
 }
 
+var	timeZone, timeLocalDelta = time.Now().Zone()
+
 // parseDateAndTime extracts a UNIX timestamp from an RFC 2579 DateAndTime.
 func parseDateAndTime(pdu *gosnmp.SnmpPDU) (float64, error) {
 	var (
@@ -330,15 +332,39 @@ func parseDateAndTime(pdu *gosnmp.SnmpPDU) (float64, error) {
 	pduLength := len(v)
 	// DateAndTime can be 8 or 11 bytes depending if the time zone is included.
 	switch pduLength {
+	case 5: // HP: YMDHM - so ancient => propably not UTC and day light saving
+		if v[0] == 0 && v[1] == 0 && v[2] == 0 && v[3] == 0 && v[4] == 0 {
+			return 0, nil
+		}
+		loc, _ := time.LoadLocation("Local")
+		t := time.Date(2000 + int(v[0]), time.Month(v[1]), int(v[2]), int(v[3]), int(v[4]), 0, 0, loc)
+		// Go time is a nightmare - what a bullshit compared to java
+		offset := int64(timeLocalDelta)
+		if t.IsDST() {
+			offset -= 3600
+		}
+		return float64(t.Unix() - int64(offset)), nil
+	case 7: // HP: YMDuHMS - so ancient => propably not UTC and day light saving
+		if v[0] == 0 && v[1] == 0 && v[2] == 0 && v[3] == 0 && v[4] == 0 && v[5] == 0 && v[6] == 0 {
+			return 0, nil
+		}
+		loc, _ := time.LoadLocation("Local")
+		t := time.Date(2000 + int(v[0]), time.Month(v[1]), int(v[2]), int(v[4]), int(v[5]), int(v[6]), 0, loc)
+		// Go time is a nightmare - what a bullshit compared to java
+		offset := int64(timeLocalDelta)
+		if t.IsDST() {
+			offset -= 3600
+		}
+		return float64(t.Unix() - int64(offset)), nil
 	case 8:
 		// No time zone included, assume UTC.
 		tz = time.UTC
 	case 11:
 		// Extract the timezone from the last 3 bytes.
-		locString := fmt.Sprintf("%s%02d%02d", string(v[8]), v[9], v[10])
+		locString := fmt.Sprintf("%c%02d%02d", v[8], v[9], v[10])
 		loc, err := time.Parse("-0700", locString)
 		if err != nil {
-			return 0, fmt.Errorf("error parsing location string: %q, error: %s", locString, err)
+			return 0, fmt.Errorf("error parsing DateAndTime location string: %q, error: %s", locString, err)
 		}
 		tz = loc.Location()
 	default:
@@ -420,9 +446,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		t = prometheus.GaugeValue
 		value, err = parseDateAndTime(pdu)
 		if err != nil {
-	if DebugEnabled {
-			level.Debug(logger).Log("msg", "Error parsing DateAndTime", "err", err)
-	}
+			level.Warn(logger).Log("msg", err, "metric", metric.Name)
 			return []prometheus.Metric{}
 		}
 	case "EnumAsInfo":

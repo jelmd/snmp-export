@@ -422,7 +422,7 @@ Set the type used to convert the received SNMP value (collection of one or more 
 - *gauge*:  An integer with type gauge.
 - *counter*: An integer with type counter.
 - *OctetString*: A bit string, rendered as 0xff34.
-- *DateAndTime*: An RFC 2579 DateAndTime byte sequence. If the device has no time zone data, UTC is used.
+- *DateAndTime*: An RFC 2579 DateAndTime byte sequence. If the device has no time zone data, UTC is used. In addition two similar formats are supported: 5 byte as ymdHM and 7 byte as ymduHMS (usally used by HP printers).
 - *DisplayString*: An ASCII or UTF-8 string.
 - *PhysAddress48*: A 48 bit MAC address, rendered as 00:01:02:03:04:ff.
 - *Float*: A 32 bit floating-point value with type gauge.
