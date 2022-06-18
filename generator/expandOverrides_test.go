@@ -133,7 +133,7 @@ func TestExpandOverrides(t *testing.T) {
 
 	for i, ta := range tests {
 		//if i != 68 { continue }
-		l := expandOverrides(ta[0], logger)
+		l := expandCfgItem(ta[0], logger)
 		r := strings.Split(ta[1], "¦")
 		if compare(l, r) {
 			t.Logf("(%02d) %s => %s", i, ta[0], strings.Join(l, "¦"))

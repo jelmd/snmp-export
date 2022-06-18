@@ -262,7 +262,7 @@ func getMetricNode(oid string, node *Node, nameToNode map[string]*Node) (*Node, 
 }
 
 
-func expandOverrides(s string, logger log.Logger) []string {
+func expandCfgItem(s string, logger log.Logger) []string {
 	if len(s) < 1 {
 		return []string{}
 	}
@@ -669,7 +669,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	// Apply type overrides for the current module.
 	for key, params := range cfg.Overrides {
 		level.Debug(logger).Log("module", mname, "Override", key, "TypeToForce", params.Type)
-		mnames := expandOverrides(key, logger)
+		mnames := expandCfgItem(key, logger)
 		if len(mnames) > 1 {
 			// expand once, only.
 			t := strings.Join(mnames, "¦")
@@ -709,11 +709,14 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		if oid == "_dummy" {
 			continue
 		}
-		n, ok := nameToNode[oid]
-		if ok {
-			toWalk = append(toWalk, n.Oid)
-		} else {
-			toWalk = append(toWalk, oid)
+		a := expandCfgItem(oid, logger)
+		for _, name := range a {
+			n, ok := nameToNode[name]
+			if ok {
+				toWalk = append(toWalk, n.Oid)
+			} else {
+				toWalk = append(toWalk, name)
+			}
 		}
 	}
 	toWalk = minimizeOids(toWalk)
@@ -833,7 +836,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 				mprefix_re[lookup.Mprefix[n]] = x
 				newList = append(newList, lookup.Mprefix[n])
 			} else {
-				l := expandOverrides(strings.TrimSpace(name), logger)
+				l := expandCfgItem(strings.TrimSpace(name), logger)
 				if len(l) > 1 {
 					level.Debug(logger).Log("mprefix", name, "expanded", strings.Join(l, "¦"))
 				}
