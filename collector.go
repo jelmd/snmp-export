@@ -1069,10 +1069,10 @@ func indexesToLabels(indexOids []int, metric *config.Metric, pdu *gosnmp.SnmpPDU
 				}
 				if lookup.SubOidRemap != nil {
 					v, x := lookup.SubOidRemap[subOids + ";" + s]
-					if x {
 	if DebugEnabled {
-						level.Debug(logger).Log("remap_metric", metric.Name, "label", lookup.Labelname[c], "old", subOids + ";" + s, "new", v)
+						level.Debug(logger).Log("remap_metric", metric.Name, "label", lookup.Labelname[c], "old", subOids + ";" + s, "new", v, "moid", metric.Oid, "poid", pdu.Name[1:])
 	}
+					if x {
 						s = v
 					}
 				}
