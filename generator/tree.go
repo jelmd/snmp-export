@@ -704,6 +704,7 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 
 	// Remove redundant OIDs to be walked.
 	toWalk := []string{}
+	forceWalk := map[string]bool{}
 	for _, oid := range cfg.Walk {
 		// Resolve name to OID if possible.
 		if oid == "_dummy" {
@@ -711,12 +712,17 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 		}
 		a := expandCfgItem(oid, logger)
 		for _, name := range a {
+			force := false
+			if name[0] == '^' {
+				name = name[1:]
+				force = true
+			}
 			n, ok := nameToNode[name]
 			if ok {
-				toWalk = append(toWalk, n.Oid)
-			} else {
-				toWalk = append(toWalk, name)
+				name = n.Oid
 			}
+			toWalk = append(toWalk, name)
+			forceWalk[name] = force
 		}
 	}
 	toWalk = minimizeOids(toWalk)
@@ -725,6 +731,15 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	metricNodes := map[*Node]struct{}{}
 	for _, oid := range toWalk {
 		metricNode, oidType := getMetricNode(oid, node, nameToNode)
+		if forceWalk[oid] {
+			n, _ := nameToNode[oid]
+			label := oid
+			if n != nil {
+				label = n.Label
+			}
+			level.Warn(logger).Log("module", mname, "node", label, "oid", oid, "oidType", oidType, "forcedOidTyp", oidSubtree)
+			oidType = oidSubtree
+		}
 		switch oidType {
 		case oidNotFound:
 			return nil, fmt.Errorf("cannot find oid '%s' to walk (module: %s)", oid, mname)
