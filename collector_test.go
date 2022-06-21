@@ -309,7 +309,7 @@ func TestPduToSample(t *testing.T) {
 				Indexes: []*config.Index{{Labelname: "foo", Type: "DisplayString", Oid: "2.3.4", IsNative: true}},
 			},
 			oidToPdu:  make(map[string]gosnmp.SnmpPDU),
-			shouldErr: true, // Invalid ASCII/UTF-8 string.
+			expectedMetrics: []string{`Desc{fqName: "test_metric", help: "Help string", constLabels: {}, variableLabels: [foo]} label:<name:"foo" value:"A\342\234\213" > gauge:<value:3 > `},
 		},
 		{
 			pdu: &gosnmp.SnmpPDU{
@@ -329,7 +329,7 @@ func TestPduToSample(t *testing.T) {
 				},
 			},
 			oidToPdu:  make(map[string]gosnmp.SnmpPDU),
-			shouldErr: true, // Invalid ASCII/UTF-8 string.
+			expectedMetrics: []string{`Desc{fqName: "test_metric", help: "Help string (regex extracted)", constLabels: {}, variableLabels: [foo]} label:<name:"foo" value:"A\342\234\213" > gauge:<value:1 > `},
 		},
 		{
 			pdu: &gosnmp.SnmpPDU{

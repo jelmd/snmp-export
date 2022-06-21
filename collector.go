@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -779,6 +780,28 @@ func pduValueAsString(pdu *gosnmp.SnmpPDU, typ string) string {
 	}
 }
 
+// similar to ToValidUTF8, but replaces _each_ invalid byte with a single char
+func makeValidUtf8(s []byte) []byte {
+	b := make([]byte, 0, len(s)+3)
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < utf8.RuneSelf {
+			i++
+			b = append(b, c)
+			continue
+		}
+		_, wid := utf8.DecodeRune(s[i:])
+		if wid == 1 {
+			i++
+			b = append(b, []byte { 0xe2, 0x9c, 0x8b }...)
+			continue
+		}
+		b = append(b, s[i:i+wid]...)
+		i += wid
+	}
+	return b
+}
+
 // Convert oids to a string index value.
 //
 // Returns the string, the oids that were used and the oids left over.
@@ -854,7 +877,11 @@ func indexOidsAsString(indexOids []int, typ string, fixedSize int, implied bool,
 		for i, o := range content {
 			parts[i] = byte(o)
 		}
-		// ASCII, so can convert staight to utf-8.
+		// per default ASCII, but not if typ was forced to DisplayString.
+		// However, we take the optimistic approach.
+		if ! utf8.Valid(parts) {
+			parts = makeValidUtf8(parts)
+		}
 		return string(parts), subOid, indexOids
 	case "InetAddressIPv4":
 		subOid, indexOids := splitOid(indexOids, 4)
@@ -1033,10 +1060,10 @@ func indexesToLabels(indexOids []int, metric *config.Metric, pdu *gosnmp.SnmpPDU
 				}
 				if lookup.Remap != nil {
 					v, x := lookup.Remap[s]
-					if x {
 	if DebugEnabled {
 						level.Debug(logger).Log("remap_metric", metric.Name, "label", lookup.Labelname[c], "old", s, "new", v)
 	}
+					if x {
 						s = v
 					}
 				}
