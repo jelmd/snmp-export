@@ -88,6 +88,28 @@ func listToOid(l []int) string {
 	return strings.Join(result, ".")
 }
 
+var SnmpError = [...]string {
+	"No error occurred.",
+	"The size of the Response-PDU would be too large to transport.",
+	"The name of a requested object was not found.",
+	"A value in the request didn't match the structure that the recipient of the request had for the object, e.g. incorrect length or type.",
+	"An attempt was made to set a variable that has an Access value indicating that it is read-only.",
+	"An unexpected error occurred.",
+	"Access was denied to the object for security reasons.",
+	"The object type in a variable binding is incorrect for the object.",
+	"A variable binding specifies a length incorrect for the object.",
+	"A variable binding specifies an encoding incorrect for the object.",
+	"The value given in a variable binding is not possible for the object.",
+	"A specified variable does not exist and cannot be created.",
+	"A variable binding specifies a value that could be held by the variable but cannot be assigned to it at this time.",
+	"An attempt to set a variable required a resource that is not available.",
+	"An attempt to set a particular variable failed.",
+	"An attempt to set a particular variable as part of a group of variables failed, and the attempt to then undo the setting of other variables was not successful.",
+	"A problem occurred in authorization.",
+	"The variable cannot be written or created.",
+	"The name in a variable binding specifies a variable that does not exist.",
+}
+
 func ScrapeTarget(ctx context.Context, target string, config *config.Module, logger log.Logger) ([]gosnmp.SnmpPDU, error) {
 	// Set the options.
 	snmp := gosnmp.GoSNMP{}
@@ -158,7 +180,12 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 		// Response received with errors.
 		// TODO: "stringify" gosnmp errors instead of showing error code.
 		if packet.Error != gosnmp.NoError {
-			return nil, fmt.Errorf("error reported by target %s: Error Status %d", snmp.Target, packet.Error)
+			// see include/net-snmp/library/snmp.h
+			s := "unknown cause"
+			if packet.Error > 0 && packet.Error < 19 {
+				s = SnmpError[packet.Error]
+			}
+			return nil, fmt.Errorf("error reported by target %s: Error Status %d (%s)", snmp.Target, packet.Error, s)
 		}
 		for _, v := range packet.Variables {
 			if v.Type == gosnmp.NoSuchObject || v.Type == gosnmp.NoSuchInstance {
