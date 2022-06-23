@@ -666,6 +666,9 @@ func generateConfigModule(mname string, cfg *ModuleConfig, node *Node, nameToNod
 	ignore := map[string]bool{}
 	relink := map[string]string{}
 
+	if len(cfg.WalkParams.FallbackLabel) != 0 {
+		cfg.WalkParams.FallbackLabel = sanitizeLabelName(cfg.WalkParams.FallbackLabel)
+	}
 	// Apply type overrides for the current module.
 	for key, params := range cfg.Overrides {
 		level.Debug(logger).Log("module", mname, "Override", key, "TypeToForce", params.Type)
@@ -1165,6 +1168,7 @@ nextLabel:
 					metric.RegexpExtracts = params.RegexpExtracts
 					metric.Remap = params.Remap
 					metric.Rename = params.Rename
+					metric.FallbackLabel = sanitizeLabelName(params.FallbackLabel)
 				}
 			}
 		}

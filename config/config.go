@@ -70,6 +70,7 @@ type WalkParams struct {
 	Retries        int           `yaml:"retries,omitempty"`
 	Timeout        time.Duration `yaml:"timeout,omitempty"`
 	Auth           Auth          `yaml:"auth,omitempty"`
+    FallbackLabel  string        `yaml:"fallback_label,omitempty"`
 }
 
 type Module struct {
@@ -195,6 +196,7 @@ type Metric struct {
 	EnumValues     map[int]string             `yaml:"enum_values,omitempty"`
 	Remap          map[string]string          `yaml:"remap,omitempty"`
 	Rename         []RegexpExtract            `yaml:"rename,omitempty"`
+    FallbackLabel  string                     `yaml:"fallback_label,omitempty"`
 }
 
 type Index struct {

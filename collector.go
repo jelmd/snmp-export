@@ -306,7 +306,7 @@ PduLoop:
 			}
 			if head.metric != nil {
 				// Found a match.
-				samples := pduToSamples(oidList[i+1:], &pdu, head.metric, oidToPdu, idxCache, c.logger, c.compact)
+				samples := pduToSamples(oidList[i+1:], &pdu, head.metric, oidToPdu, idxCache, c.logger, c.compact, c.module.WalkParams.FallbackLabel)
 				for _, sample := range samples {
 					ch <- sample
 				}
@@ -414,7 +414,7 @@ func parseDateAndTime(pdu *gosnmp.SnmpPDU) (float64, error) {
 	return float64(t.Unix()), nil
 }
 
-func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger, compact bool) []prometheus.Metric {
+func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, oidToPdu map[string]gosnmp.SnmpPDU, idxCache map[string]string, logger log.Logger, compact bool, fallbackLabel string) []prometheus.Metric {
 	var err error
 	// The part of the OID that is the indexes.
 	labels, subOid := indexesToLabels(indexOids, metric, pdu, oidToPdu, idxCache, logger)
@@ -478,11 +478,11 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 			return []prometheus.Metric{}
 		}
 	case "EnumAsInfo":
-		return enumAsInfo(metric, newName, int(value), labelnames, labelvalues, compact)
+		return enumAsInfo(metric, newName, int(value), labelnames, labelvalues, compact, fallbackLabel)
 	case "EnumAsStateSet":
-		return enumAsStateSet(metric, newName, int(value), labelnames, labelvalues, compact)
+		return enumAsStateSet(metric, newName, int(value), labelnames, labelvalues, compact, fallbackLabel)
 	case "Bits":
-		return bits(metric, newName, pdu.Value, labelnames, labelvalues, compact)
+		return bits(metric, newName, pdu.Value, labelnames, labelvalues, compact, fallbackLabel)
 	default:
 		// It's some form of string.
 		t = prometheus.GaugeValue
@@ -514,7 +514,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		}
 
 		if hasRegex {
-			return applyRegexExtracts(metric, newName, subOid, strings.TrimSpace(pduValueAsString(pdu, metricType)), labelnames, labelvalues, logger, compact)
+			return applyRegexExtracts(metric, newName, subOid, strings.TrimSpace(pduValueAsString(pdu, metricType)), labelnames, labelvalues, logger, compact, fallbackLabel)
 		}
 		s := strings.TrimSpace(pduValueAsString(pdu, metricType))
 		// Put in the value as a label with the same name as the metric.
@@ -536,7 +536,13 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		needRemap = false
 		if addLabel {
 			// unlikely that it is already there
-			labelnames = append(labelnames, newName)
+			if len(metric.FallbackLabel) != 0 {
+				labelnames = append(labelnames, metric.FallbackLabel)
+			} else if len(fallbackLabel) != 0 {
+				labelnames = append(labelnames, fallbackLabel)
+			} else {
+				labelnames = append(labelnames, newName)
+			}
 			labelvalues = append(labelvalues, s)
 		}
 	}
@@ -546,7 +552,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 		help = metric.Help
 	}
     if hasRegex {
-		return applyRegexExtracts(metric, newName, subOid, strconv.FormatFloat(value, 'f', -1, 64), labelnames, labelvalues, logger, compact)
+		return applyRegexExtracts(metric, newName, subOid, strconv.FormatFloat(value, 'f', -1, 64), labelnames, labelvalues, logger, compact, fallbackLabel)
 	}
 	if needRemap {
 		v, ok := metric.Remap[strconv.FormatFloat(value, 'f', -1, 64)]
@@ -559,7 +565,13 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 				value = f
 			} else {
 				// unlikely that it is already there
-				labelnames = append(labelnames, newName)
+				if len(metric.FallbackLabel) != 0 {
+					labelnames = append(labelnames, metric.FallbackLabel)
+				} else if len(fallbackLabel) != 0 {
+					labelnames = append(labelnames, fallbackLabel)
+				} else {
+					labelnames = append(labelnames, newName)
+				}
 				labelvalues = append(labelvalues, v)
 				// value = 1.0	// not resetting it allows more flexebility
 			}
@@ -575,7 +587,7 @@ func pduToSamples(indexOids []int, pdu *gosnmp.SnmpPDU, metric *config.Metric, o
 	return []prometheus.Metric{sample}
 }
 
-func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pduValue string, labelnames, labelvalues []string, logger log.Logger, compact bool) []prometheus.Metric {
+func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pduValue string, labelnames, labelvalues []string, logger log.Logger, compact bool, fallbackLabel string) []prometheus.Metric {
 	results := []prometheus.Metric{}
 	help := ""
 	if ! compact {
@@ -620,7 +632,13 @@ func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pdu
 	if DebugEnabled {
 				level.Debug(logger).Log("msg", "Error parsing float64 from value", "metric", newName, "value", pduValue, "regex", strMetric.Regex.String(), "extracted_value", res)
 	}
-				labelnames = append(labelnames, newName)
+				if len(metric.FallbackLabel) != 0 {
+					labelnames = append(labelnames, metric.FallbackLabel)
+				} else if len(fallbackLabel) != 0 {
+					labelnames = append(labelnames, fallbackLabel)
+				} else {
+					labelnames = append(labelnames, newName)
+				}
 				labelvalues = append(labelvalues, s)
 				v = 1.0
 			}
@@ -637,7 +655,7 @@ func applyRegexExtracts(metric *config.Metric, mName string, subOids string, pdu
 	return results
 }
 
-func enumAsInfo(metric *config.Metric, newName string, value int, labelnames, labelvalues []string, compact bool) []prometheus.Metric {
+func enumAsInfo(metric *config.Metric, newName string, value int, labelnames, labelvalues []string, compact bool, fallbackLabel string) []prometheus.Metric {
 	// Lookup enum, default to the value.
 	state, ok := metric.EnumValues[int(value)]
 	if !ok {
@@ -650,7 +668,13 @@ func enumAsInfo(metric *config.Metric, newName string, value int, labelnames, la
 		}
 		state = t
 	}
-	labelnames = append(labelnames, newName)
+	if len(metric.FallbackLabel) != 0 {
+		labelnames = append(labelnames, metric.FallbackLabel)
+	} else if len(fallbackLabel) != 0 {
+		labelnames = append(labelnames, fallbackLabel)
+	} else {
+		labelnames = append(labelnames, newName)
+	}
 	labelvalues = append(labelvalues, state)
 
 	help := ""
@@ -666,8 +690,14 @@ func enumAsInfo(metric *config.Metric, newName string, value int, labelnames, la
 	return []prometheus.Metric{newMetric}
 }
 
-func enumAsStateSet(metric *config.Metric, newName string, value int, labelnames, labelvalues []string, compact bool) []prometheus.Metric {
-	labelnames = append(labelnames, newName)
+func enumAsStateSet(metric *config.Metric, newName string, value int, labelnames, labelvalues []string, compact bool, fallbackLabel string) []prometheus.Metric {
+	if len(metric.FallbackLabel) != 0 {
+		labelnames = append(labelnames, metric.FallbackLabel)
+	} else if len(fallbackLabel) != 0 {
+		labelnames = append(labelnames, fallbackLabel)
+	} else {
+		labelnames = append(labelnames, newName)
+	}
 	results := []prometheus.Metric{}
 
 	state, ok := metric.EnumValues[value]
@@ -716,13 +746,19 @@ func enumAsStateSet(metric *config.Metric, newName string, value int, labelnames
 	return results
 }
 
-func bits(metric *config.Metric, newName string, value interface{}, labelnames, labelvalues []string, compact bool) []prometheus.Metric {
+func bits(metric *config.Metric, newName string, value interface{}, labelnames, labelvalues []string, compact bool, fallbackLabel string) []prometheus.Metric {
 	bytes, ok := value.([]byte)
 	if !ok {
 		return []prometheus.Metric{prometheus.NewInvalidMetric(prometheus.NewDesc("snmp_error", "BITS type was not a BISTRING on the wire.", nil, nil),
 			fmt.Errorf("error for metric %s with labels %v: %T", newName, labelvalues, value))}
 	}
-	labelnames = append(labelnames, newName)
+	if len(metric.FallbackLabel) != 0 {
+		labelnames = append(labelnames, metric.FallbackLabel)
+	} else if len(fallbackLabel) != 0 {
+		labelnames = append(labelnames, fallbackLabel)
+	} else {
+		labelnames = append(labelnames, newName)
+	}
 	results := []prometheus.Metric{}
 
 	help := ""

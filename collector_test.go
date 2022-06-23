@@ -36,6 +36,7 @@ func TestPduToSample(t *testing.T) {
 		oidToPdu        map[string]gosnmp.SnmpPDU
 		expectedMetrics []string
 		shouldErr       bool
+		fallbackLabel	string
 	}{
 		{
 			pdu: &gosnmp.SnmpPDU{
@@ -518,7 +519,7 @@ func TestPduToSample(t *testing.T) {
 
 	idxCache := map[string]string{}
 	for n, c := range cases {
-		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, idxCache, log.NewNopLogger(), false)
+		metrics := pduToSamples(c.indexOids, c.pdu, c.metric, c.oidToPdu, idxCache, log.NewNopLogger(), false, c.fallbackLabel)
 		metric := &io_prometheus_client.Metric{}
 		expected := map[string]struct{}{}
 		for _, e := range c.expectedMetrics {
