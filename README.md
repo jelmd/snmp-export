@@ -17,7 +17,7 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - replacing the metric name based on its value regex match or sub OID
 - dropping labels based on label value regex match
 - remapping metric as well as label values
-- generic overrides
+- generic overrides, walks, metric narrowing via brace expansion
 - non-numeric override regex\_extracts results, i.e. consistent behavior as without an override: for non-float values insert a label=value pair and set metric value = 1.0.
 - counter, gauge, Float, DateAndTime in override regex\_extracts (value gets converted to its decimal string representation first). So no need to force its type to e.g. DisplayString anymore, which would in turn cause its value to be set to 1.0.
 - injection of non-index based labels and related PDU values
@@ -26,6 +26,11 @@ For now the main enhancements wrt. to the original repo alias upstream is the su
 - sub OID filter for regex\_extracts, lookups and label regexes.
 - new value type `uptime`: instructs snmp-exporter to convert the value (uptime TimeTicks) to a UNIX timestamp (boot time) -> constant values.
 - automatic removal of leading and trailing whitespaces from PDU values
+- production of always valid UTF-8 strings for DisplayString typed objects
+- auto-indexing to handle objects with buggy MIB definitions
+- ability to force bulkwalks
+- definition of the labelname for automatically inserted labels for non-numeric metric values on module as well as metric scope.
+- enhanced DateAndTime handling.
 - negate the outcome of a match, i.e. replace only if regex does not match.
 - better support for troubleshooting and optimization by OID "annotations"
 - CLI output file option.

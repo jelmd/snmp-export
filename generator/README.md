@@ -36,7 +36,7 @@ modules:
   moduleName:                              # Mandatory. At least one.
 
     walk:                                  # Mandatory with one or more:
-      - OID
+      - OID                                #   (both with brace expansion)
       - snmpObjectName
       ...
     version: snmpVersion                   # 1..3. Default: 2 (i.e. SNMPv2c)
@@ -44,6 +44,7 @@ modules:
     retries: intNumber                     # Default: 3
     timeout: numSeconds                    # Default: 5
     prefix: metricsPrefix                  # Default: ''
+    fallback_label: labelName              # Optional.
 
     auth:                                  # SNMP authentication parameters:
       community: communityName             #   SNMPv1 & v2c. Default: 'public'
@@ -63,38 +64,40 @@ modules:
         - indexOID
         ...
         mprefix:                           #   Optional with one or more:
-          - indexNamePrefix
-          - indexOIDPrefix
+          - indexNamePrefix                #   (prefix '_' => regex, otherwise
+          - indexOIDPrefix                 #    brace expansion)
           ...
+        lookup: tableNameChain             #   Mandatory (may use matched groups if mprefix is a regex).
+                                           #   (Special: '_idx' - auto indexing)
         sub_oids: regexExpr                #   Optional subOid filter.
         drop_source_indexes: boolVal       #   Default: false
-        lookup: tableNameChain             #   Mandatory.
         rename: newIndexName               #   Default: '' (i.e. do not rename)
         revalue:                           #   Optional.
           regex: regexExpr                 #     Default: ''
           invert: boolVal                  #     Default: false
-          value: newValue                  #     Default: '$1'. Special value: `@drop@` .. drop metric on match.
+          value: newValue                  #     Default: '$1'. Special: '@drop@' .. drop metric on match.
           sub_oids: regexExpr              #     optional subOid filter.
         remap:                             #   Optional with one or more:
-          key: val
+          key: val                         #   (Special: '@drop@' as above).
           ...
         sub_oid_remap:                     #   Optional with one or more:
-          key: val
+          key: val                         #   (Special: '@drop@' as above).
           ...
 
     overrides:                             # Optional with one or more:
-      metricNameList:                      #   Mandatory.
+      metricNameList:                      #   Mandatory (brace expansion).
         ignore: boolVal                    #     Default: false
         type: newType                      #     Default: '' (i.e. keep type as is)
+        fallback_label: labelName          #     Optional.
         regex_extracts:                    #     Optional with one or more:
           newSuffix:                       #       Default: '' (Special: leading `.` or `^`) with one or more:
             -  regex: regexExpr            #         Default: ''
                invert: boolVal             #         Default: false
-               value: newValue             #         Default: '$1'. Special value: `@drop@` .. drop metric on match.
+               value: newValue             #         Default: '$1'. Special: '@drop@' .. drop metric on match.
                sub_oids: regexExpr         #         optional subOid filter.
             ...
         remap:                             #     Optional with one or more:
-          key: val
+          key: val                         #     (Special: '@drop@' as above).
           ...
         rename:                            #     Optional with one or more:
           - sub_oids: regexExpr            #         Default: ''
@@ -191,6 +194,47 @@ ifOutOctets{ifIndex="369098753",ifName="Gi0/2"} 369098753
 
 Because there is no value for the ifIndex anymore, one may drop it by removing the comment sign `#` before the `drop_source_indexes` key within the generator config file. Furthermore to rename a label one may use the `lookup.rename` key, to modify its value, or to even drop the whole metric based on the index (alias label) value one may use the `lookup.revalue` key within *lookups*.
 
+## brace expansion
+To make it easier to specify source or targets and to avoid a lot of duplications, this generator supports brace expansions, when explicitly mentioned.
+
+If `l1`,`l2` are either all lower case or all upper case letters in C locale,
+`n1`,`n2`,`n3` signed numbers, s, s1, ... normal strings (literals), and
+`fmt` a string specified as in [fmt.Printf()](https://pkg.go.dev/fmt#hdr-Printing) the
+following expressions are recognized and expanded as described below:
+- (1) `{s[,s1]...}`
+- (2) `{l1..l2[..n3][%fmt]}`
+- (3) `{n1..n2[..n3][%fmt]}`
+
+The curly braces, dots and percent sign are literals, the brackets mark an
+optional part of the brace expression - need to be ommitted.
+
+They may appear anywhere in a string or a list of strings separated by a broken bar symbol (`¦`).
+
+In the first form the generator iterates over the comma separated list of
+strings and creates for each member a new string by replacing the brace
+expression with the member.
+E.g. `foo{bar,sel,l}` becomes `foobar¦foosel¦fool`.
+
+In the second and third form the generator iterates from `l1` through `l2`
+or `n1` through `n2` using the given step width `n3`. If `n3` is not given, it
+gets set to `1` or `-1` depending on the first and second argument. If `%fmt`
+is given, it will be used to create the string from the generated character
+or number. Otherwise `%c` (2nd form) or `%d`(3rd form) will be used.
+
+Finally a new list of strings gets generated, where the brace expression
+gets replaced by the members of the one-letter or number list one-by-one.
+E.g. `chapter{A..F}.1` becomes
+`chapterA.1¦chapterB.1¦chapterC.1¦chapterD.1¦chapterE.1¦chapterF.1`,
+and `{a,z}{1..5..3%02d}{b..c}x` expands to 2x2x2 == 8 strings:
+`a01bx¦a01cx¦a04bx¦a04cx¦z01bx¦z01cx¦z04bx¦z04cx`.
+
+One may escape curly braces with a backslash(`\`) to get it ignored, but since they are not
+allowed in metric names, it doesn't make much sense for the generator case.
+Any brace expression which cannot be parsed or uses invalid arguments gets
+handled as literal without the enclosing curly braces. Note that in the
+2nd form ASCII letters in the range of `a-z` and `A-Z` are accepted, only.
+
+
 
 ## modules
 Just the anchor for all modules. The simplest module is just a name and a set of OIDs to walk.
@@ -201,6 +245,7 @@ The name of a module, the smallest "addressable" unit for a prometheus client.
 ## walk: _list_
 List of OIDs and SNMP object names to walk via SNMP. NOTE that object names might be not unique within a MIB and therefore the generated config might not query the intended objects. If unsure, use OIDs instead. Basically if you do a something like `snmpbulkwalk -v 2c -c public -Pu -Pw -OX $targetIP $OID_or_Name` the object name shown after the double colon (`::`) becomes the name of the metric. If the related "table entry" (if any) has an `INDEX` definition all these indexes become the labels of the metric with the obtained index value set.
 
+The generator deduces from the MIB, whether it needs to issue a `snmpget` (scalar object) or a `snmpbulkwalk` (tables and sub-trees). However, if the MIB definition is buggy (like HP's futuresmart3 MIB), the decision migth be wrong, because the scalar is not really a scalar, but has undeclared children (see `lookup` description for a detailed example). In this case one may prefix the OID or object name with a circumflex symbol (`^`). This instructs the generator to put the object into the bulkwalk section of the generated exporter config file.
 
 ## version: _version_
 SNMP version to use.  1 will use GETNEXT, 2 (stands for 2c) and 3 use GETBULK. For 2 you may need to change/set the community name to use, for 3 all the other authentication/encryption related paramaters.
@@ -216,6 +261,12 @@ Timeout for each individual SNMP request.
 
 ## prefix: _metricsPrefix_
 Ensures that each metric has the prefix _metricsPrefix_. If a metric doesn't have it already, its gets prepend the metric name. Per default no prefix will be used.
+
+## fallback\_label: _labelName _
+Per default the exporter generates and injects a label for non-numeric metric values having the same name as the metric and using the metric's value as label value. E.g. the SNMP entry for `sysName` gets formatted as `sysName(sysName="foobar") 1`. Technically this approach causes probably no collision with other SNMP object names, however, the output becomes less readable (especially for long names) and might be hard to handle in a generic way and consume more resources for processing as needed.
+
+When this optional property gets set, e.g. to `fallback_label: val` here at the module level, the exporter will now use `val` as metric label value instead of the metric name for all metrics when needed. Wrt. to the example mentioned before it would now look like this `sysName(val="foobar") 1`. If this is to coarse grained for you, you may set it in the `overrides` section for the intended metrics, too. The letter takes precedence over the module setting.
+
 
 ## auth
 Authentication paramaters to use for SNMP requests. Depends on SNMP version in use. For v2c the *community* name is needed - usually *public* is used by most devices, so this is the default. For SNMP v3 the required parameters depend on the choosen *security_level*.
@@ -270,11 +321,6 @@ If `source_indexes` contains an empty list, and a lookup value is given, the loo
 This would create a metric like `cmcTcUnit1Status{name="RLCP"} 1` and without the lookup `cmcTcUnit1Status 1`.
 
 
-### mprefix: _list_
-An option to further narrow down, to which metrics this lookup definition gets applied. Only if a metric's name or OID starts with a string in the given _list_ the lookup gets applied to it. This gets handy if several objects use the same index, e.g. `entPhysicalIndex`, but depending on the name of the metric you wanna lookup its textual representation in the `shortNameTable` or `longNameTable`, or look it up in the `entPhysicalName` but rename the label to `fan` or `sensor` depending the name of the metric. The source\_indexes option would be to coarse for it, would produce different labels with the same value.
-
-Per default the list is empty and implies no restriction wrt. the metric's name.
-
 ### sub\_oids: _regex_
 Another option to further narrow down, to which metrics this lookup definition gets applied. If the *subOID* of the metric instance alias SNMP object does not match _regex_ the exporter skips this lookup and continues with the next one. For more details wrt. *subOID*  have a look at the `revalue` section below.
 
@@ -320,7 +366,71 @@ So the `cpmCPUTotalIndex` needs to be used to obtain the `cpmCPUTotalPhysicalInd
         mprefix: [cpmCPU]
         lookup: cpmCPUTotalPhysicalIndex¦entPhysicalName
 ```
-NOTE: A lookup may overwrite any label already inserted. So if one has more than a single lookup, take care of its order.
+
+Since version 2.0.0 `lookup: _idx` is a special, which allows one e.g. to handle bogus or incomplete MIB defined object. E.g. HP defines an object named consumable-status-usage-units as a scalar, i.e. it is neither a table nor does are any children definied for this node. However, if one queries this object, an error occurs. E.g.:
+```
+admin> snmptranslate -Pu -Td -On -IR consumable-status-usage-units
+.1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17
+consumable-status-usage-units OBJECT-TYPE
+  -- FROM	FUTURESMART3a-MIB
+  SYNTAX	INTEGER {ePixels(1), eTenthsOfGrams(2), eGrams(3), eRotations(4), ePages(5), eImpressions(6), ePercentLifeRemaining(7), eOther(8)} 
+  MAX-ACCESS	read-only
+  STATUS	optional
+  DESCRIPTION	"This object is used to report the units used to measure the	
+                capacity of this consumable.
+                Additional information:
+                This object will only exist on engines that are E-Label
+                capable, but will exist on these engines regardless of 
+                the cartridge being Authentic HP or NonHP.  This object 
+                can be used to ensure the capability of the E-Label 
+                feature for a given engine."
+::= { iso(1) org(3) dod(6) internet(1) private(4) enterprises(1) hp(11) nm(2) hpsystem(3) net-peripheral(9) netdm(4) dm(2) device(1) destination-subsystem(4) print-engine(1) consumables(10) consumables-1(1) consumable-status(1) 17 }
+
+admin> snmpget -c public -v2c -Pu -On $PRINTER consumable-status-usage-units
+.1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17 = No Such Instance currently exists at this OID
+
+admin> snmpbulkwalk -c public -v2c -Pu -On $PRINTER consumable-status-usage-units
+.1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17.1.0 = INTEGER: ePercentLifeRemaining(7)
+.1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17.2.0 = INTEGER: ePercentLifeRemaining(7)
+.1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17.3.0 = INTEGER: ePercentLifeRemaining(7)
+.1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17.4.0 = INTEGER: ePercentLifeRemaining(7)
+
+admin> snmpbulkwalk -c public -v2c -Pu -OX rubens consumable-status-usage-units
+FUTURESMART3a-MIB::consumable-status-usage-units.1.0 = INTEGER: ePercentLifeRemaining(7)
+FUTURESMART3a-MIB::consumable-status-usage-units.2.0 = INTEGER: ePercentLifeRemaining(7)
+FUTURESMART3a-MIB::consumable-status-usage-units.3.0 = INTEGER: ePercentLifeRemaining(7)
+FUTURESMART3a-MIB::consumable-status-usage-units.4.0 = INTEGER: ePercentLifeRemaining(7)
+```
+
+As you can see, the scalar has sub-entries and thus is not a scalar as defined in the MIB. Anyway, because the generator/exporter cannot deduce this from the buggy MIB, it creates a metric with the same name and value for each object (`consumable_status_usage_units 2`), which finally causes an 'same metric with same labels already inserted' error. To fix it, one may use `lookup: _idx`. In this case the exporter cuts off the OID of the metric from the OID of the instance (e.g. .1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17.2.0 - .1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.10.1.1.17. = 2.0) and cuts off the trailing `.0` if any. So in this case the label `_idx="2"` gets inserted into the metric and finally makes all instances unique (`consumable_status_usage_units(_idx="2") 7`). A second use case is: If the metric OID is the same as the instance OID, the exporter cuts off the last two numbers of the OID and uses this as result instead - like row.column for a table.
+
+Of course on may rename `_idx` to somthing else using the `rename` feature, or `remap` or transfom the value per `revalue` feature.
+
+NOTE: If one uses more than a single lookups entry, the order of the items are important, because a lookups key:value result overwrites the label with the same name (key) if it already got inserted.
+
+### mprefix: _list_
+An option to further narrow down, to which metrics this lookup definition gets applied. Only if a metric's name or OID starts with a string in the given _list_ the lookup gets applied to it. This gets handy if several objects use the same index, e.g. `entPhysicalIndex`, but depending on the name of the metric you wanna lookup its textual representation in the `shortNameTable` or `longNameTable`, or look it up in the `entPhysicalName` but rename the label to `fan` or `sensor` depending the name of the metric. The source\_indexes option would be to coarse for it, would produce different labels with the same value.
+
+List items are separated by a broken bar (`¦`) and per default subject to brace expansions. But if a list item has an underline (`_`) prefix, the item gets handled as a regex, which gets matched against potential metrics. One may use captured groups to modify the correponding lookup to use. E.g.:
+```
+modules:
+  test:
+    walk:
+      - media{1..41}-page-count
+    lookups:
+      - source_indexes: []
+        lookup: 'media$1-name'
+        mprefix: ['_media([0-9]+)-page-count']
+        rename: name
+    overrides:
+      media{1..41}-page-count:
+        rename:
+          - value: media_page_count
+            sub_oids: '.*'
+```
+This little snippet would e.g. format `FUTURESMART3a-MIB::media1-page-count.0 = INTEGER: 10` as `media_page_count(name="A4") 10` if the result of the `media1-name` lookup is `A4`. 
+
+Per default the mprefix list is empty and implies no restriction wrt. the metric's name.
 
 ### rename: _newIndexName_
 Rename the label produced by the last component of the *lookup*._tableNameChain_ to _newIndexName_. Per default (i.e. if empty) it stays as is.
@@ -379,51 +489,17 @@ This is the same as `remap`, but the lookup key gets formed by the *subOid* of t
 The `override` config deals with metric names and values. E.g. it allows one to drop metrics based on its value, change the metric's name, modify/remap the metric value, or to change its representation type (gauge, counter, etc.).
 
 ### _metricNameList_
-The names of the metrics aka SNMP variables seprated by a vertical bar (pipe) symbol to which this override should be applied. It is not possible to use wildcards here, however, since version 1.1. you may use generic names (similar to ksh93), which will help a lot when dealing e.g. with HP printers:
+The names of the metrics aka SNMP object seprated by a vertical broken bar (i`¦`) symbol to which this override should be applied. It is not possible to use wildcards here. However, since version 1.1. you may use brace expansions as described above, which will help a lot when dealing e.g. with HP printers.
 
-If `l1`,`l2` are either all lower case or all upper case letters in C locale,
-`n1`,`n2`,`n3` signed numbers, and
-`fmt` a string specified as in [fmt.Printf()](https://pkg.go.dev/fmt#hdr-Printing) the following
-brace expansions are supported:
-- (1) `{s[,s1]...}`
-- (2) `{l1..l2[..n3][%fmt]}`
-- (3) `{n1..n2[..n3][%fmt]}`
-
-The curly braces, dots and percent sign are literals, the brackets mark an
-optional part of the brace expression - need to be ommitted.
-
-In the first form the generator iterates over the comma separated list of
-strings and creates for each member a new string by replacing the brace
-expression with the member.
-E.g. `foo{bar,sel,l}` becomes `foobar¦foosel¦fool`.
-
-In the second and third form the generator iterates from `l1` through `l2`
-or `n1` through `n2` using the given step width `n3`. If `n3` is not given, it
-gets set to `1` or `-1` depending on the first and second argument. If `%fmt`
-is given, it will be used to create the string from the generated character
-or number. Otherwise `%c` (2nd form) or `%d`(3rd form) will be used.
-
-Finally a new list of strings gets generated, where the brace expression
-gets replaced by the members of the one-letter or number list one-by-one.
-E.g. `chapter{A..F}.1` becomes
-`chapterA.1¦chapterB.1¦chapterC.1¦chapterD.1¦chapterE.1¦chapterF.1`,
-and `{a,z}{1..5..3%02d}{b..c}x` expands to 2x2x2 == 8 strings:
-`a01bx¦a01cx¦a04bx¦a04cx¦z01bx¦z01cx¦z04bx¦z04cx`.
-
-One may escape curly braces with a backslash(`\`) to get it ignored, but since they are not
-allowed in metric names, it doesn't make much sense for the generator case.
-Any brace expression which cannot be parsed or uses invalid arguments gets
-handled as literal without the enclosing curly braces. Note that in the
-2nd form ASCII letters in the range of `a-z` and `A-Z` are accepted, only.
-
+NOTE: It is recommended to always use the SNMP object name and not the metric name, where all non-alphanumeric charcaters of the object name automatically get replaced by an underscore (`_`). If you get a message containing `SNMP object not found` this might be one reason for it.
 
 #### type: _newType_
 Set the type used to convert the received SNMP value (collection of one or more bytes) to the metric value string to _newType_. By default it gets deduced from the SNMP object's SYNTAX within the MIB. Allowed types are:
 - *gauge*:  An integer with type gauge.
 - *counter*: An integer with type counter.
-- *OctetString*: A bit string, rendered as 0xff34.
+- *OctetString*: A byte sequence, rendered as hex values, e.g. 0xff34.
 - *DateAndTime*: An RFC 2579 DateAndTime byte sequence. If the device has no time zone data, UTC is used. In addition two similar formats are supported: 5 byte as ymdHM and 7 byte as ymduHMS (usally used by HP printers).
-- *DisplayString*: An ASCII or UTF-8 string.
+- *DisplayString*: An ASCII or UTF-8 string. Note that any non-UTF-8 byte gets converted into the UTF-8 sequence hand sign (✋= 0xe2 0x9c 0x8b).
 - *PhysAddress48*: A 48 bit MAC address, rendered as 00:01:02:03:04:ff.
 - *Float*: A 32 bit floating-point value with type gauge.
 - *Double*: A 64 bit floating-point value with type gauge.
@@ -435,6 +511,9 @@ Set the type used to convert the received SNMP value (collection of one or more 
 - *EnumAsStateSet*: An enum with a time series per state. Good for variable low-cardinality enums.
 - *Bits*: An RFC 2578 BITS construct, which produces a StateSet with a time series per bit.
 - *uptime*: snmp-exporter internal. Converts the value (usually TimeTicks) into a boot time UNIX timestamp (i.e. seconds since 1970-01-01 00:00:00 UTC), so that it becomes a constant and can be stored in a very efficient way by time series DBs. However, this assumes, that scraping the related target takes always the same time +-2 s (snmp-exporter rounds it by 2), because the time gets calculated wrt. to the time when scraping has been done (snmp-exporter fetches all required SNMP data first, before it starts to process it).
+
+#### fallback\_label: _labelName _
+This has the same effect as `fallback_label: labelName` in the module setting, but gets used for the metrics specified in the _metricNameList_ if needed, only.  It takes precedence of the module setting with the same name (if any). For more details read the `fallback_label` decription in the module section.
 
 #### ignore: _boolVal_
 Drops the metric from the exporter's module config if set to `true`. And of course: if no metric gets created, no lookups as well as no regex\_extracts have an impact on it. However, if needed, the required SNMP request will be made to obtain the required data, e.g. to resolve an index number of a table into its textual representation.
@@ -451,9 +530,9 @@ MetricSuffix:             # Special: leading `.` or `^`
 ```
 Per default on match a new metric gets created, which inherits the name of the metric to which this override gets applied, but with the _MetricSuffix_ append. The exporter evaluates each regex/value pair one after another. On match the metric's value gets set to the expanded `newValue` (capture-groups are supported). If `invert` is set to `true`, the value gets replaced with the `newValue` only if no match occures. If the obtained string can be parsed as float64, the metric gets returned having its value set to the parsed float. Otherwise a label having the same name as the metric itself and the value of the obtained string gets insterted into the metric. The value of the metric gets set to `1.0`.
 
-So first match always wins and stops regex evaluation!
+First match always wins and stops regex evaluation of the `regex_extracts` item!
 
-If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped.
+If all regex/value evals fail, the given _MetricSuffix_ would not emit a metric. Finally, after all _MetricSuffix_ configs have been processed, the original metric gets dropped. This is very important! So if you miss a metric, you possibly managed to get it chomped by not providing a final match like `(.*)` with `$1`.
 
 If a `sub_oids` regex is given, it behaves like described in the lookup section: if it matches the subOid of the related metric, it gets applied as usual, otherwise it gets not applied and the result is set to "no match".
 
@@ -463,7 +542,7 @@ NOTE: In contrast to the upstream version, a zero length result string does not 
 
 Specials:
 
-If the _MetricSuffix_ starts with a dot (`.`), the new metric name gets created by just replacing the dot with the module prefix + `_` (if any). If it starts with a circumflex (`^`), it gets removed and the remaining part becomes the new metric name (i.e. no prefix). Otherwise _MetricSuffix_ gets append to the related metric name.
+If the _MetricSuffix_ starts with a dot (`.`), the new metric name gets created by just replacing the dot with the module prefix + `_` (if any). If it starts with a circumflex (`^`), the part after the circumflex becomes the new metric name (i.e. no prefix). Otherwise _MetricSuffix_ gets append to the related metric name.
 
 If the _newValue_ results into `@drop@`, the original metric gets dropped and no new metric, no matter, whether previous regex pairs had a match. So to drop e.g. only metrics having a value of `0`, one may use:
 ```
@@ -476,7 +555,7 @@ unit1SensorSetHigh:
       - regex: '.*'
         value: '$1'
 ```
-The 2nd regex pair is important, otherwise no match would happen for values != 0 and thus no new metric created (and the original gets dropped as usual).
+Again, the 2nd regex pair is important, otherwise no match would happen for values != 0 and thus no new metric created (and the original gets dropped as usual).
 
 #### remap
 This optional setting allows one to replace a metric's value using a map (instead of a bunch of regex pairs). After the optional regex\_extracts got applied, the value gets converted into its string representation and used as key for the lookup within the map. On match the value of the entry found becomes the metric's value. However, for `counter`, `gauge`, `Float`, `Double`, `DateAndTime` and `EnumAs*` a new value gets parsed as Float64 first - only if convertion succeeds, the new value will be set (otherwise the metric value is kept as is). If the result of a map lookup is `@drop@` the related metric gets dropped. For `Bits` no remapping gets applied (create an issue on [github](https://github.com/jelmd/snmp_exporter/issues), if you really need it).
@@ -495,6 +574,9 @@ This optional array contains sub\_oids/value pairs. If the `sub_oids` regex matc
 ```
 This would cause all metric instances having a subOid of 3009..3014 to be renamed to `lcp_fan_pct`, and all instances with a subOid of 1001, 1008, 3001..3008, 3015, and 3016 to be renamed to `lcp_temperature_C`. All others will keep its name `entPhySensorValue`. But remember, the name can still be overwritten/modified by other directives like `regex_extracts`.
 
+## HINTS
+
+If the result of a metric is not a number, a new label with the same name as the metric gets injected into the metric, with its value set to the result, and the metrics value set to `1.0`. This happens at the very last step and thus there is no direct way to rename the injected label. However, what one may do is to inject a new label with the intended name using a `lookups` item with an empty source\_indexes list, a lookup entry for this metric and rename it to the intended name. So the last thing one needs than to do is to avoid the automatic insertion of the label. For this one may use an overrides entry for the metric having a `regex_extracts` entry, which replaces `.*` with `1`.
 
 # EnumAsInfo and EnumAsStateSet
 
