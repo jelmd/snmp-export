@@ -1,0 +1,768 @@
+# This is a configuration file for the
+# https://github.com/jelmd/snmp_exporter/tree/main/generator
+# (C) 2022 by Jens Elkner (jel+snmpex@cs.uni-magdeburg.de)
+#
+# To translate it into a YAML spec conforming file, you need to pass it through
+# https://github.com/jelmd/snakeyaml - this is a modified YAML file parser,
+# which allows duplicated keys and in turn does what most normal people would
+# do: merge its contents into a single basket and throw away the now redundant
+# basket. 
+
+# Used MIBs are available via http://iks.cs.ovgu.de/~elkner/snmp/mibs/.
+
+# This config demonstrates and makes extended use of featueres introduced in
+# version 2.0.0 of the SNMP export config generator.
+
+modules:
+
+  global_vars:
+    prefix: &prefix printer
+
+  # Queries the raw print-MIB as is. Good to explore "standard" printer infos,
+  # but not for periodic queries. Should work with all printers.
+  printmib:
+    fallback_label: val
+    walk:
+      - printmib
+    overrides:
+      prtAlertDescription¦prtConsoleDescription¦prtConsoleDisplayBufferText¦prtCoverDescription¦prtGeneralPrinterName¦prtGeneralSerialNumber¦prtInputDescription¦prtInputMediaName¦prtInputName¦prtInputSerialNumber¦prtInputVendorName¦prtInterpreterDescription¦prtInterpreterLangLevel¦prtLocalizationCountry¦prtLocalizationLanguage¦prtMarkerColorantValue¦prtMarkerSuppliesDescription¦prtMediaPathDescription¦prtOutputDescription¦prtOutputName¦prtOutputVendorName¦prtOutputVersion:
+        type: DisplayString
+
+  # The interesting part of the printer-MIB, which one would usually qery
+  # periodically and thus indexes resolved. However, basically it just exposes
+  # number of all pages (impressions) printed and remaining toner in %.
+  # For more details one needs vendor specific MIBs like HP's futuresmart3.
+  print_common_template:
+    fallback_label: val
+    walk: &print_common_walk
+      #- "mib-2"
+      - snmpInPkts              # 1.3.6.1.2.1.11.1
+      - snmpOutPkts             # 1.3.6.1.2.1.11.2
+      - sysUpTime				# 1.3.6.1.2.1.1.3
+
+      - hrDeviceStatus
+      - hrPrinterStatus
+
+      - prtMarkerCounterUnit			# 7 = impressions
+      # Gesamt-Zählerstand
+      # toshiba:
+      #		sum((copy,fax,printer,list){small,large} X full,Twin/Mono,Black)
+      - prtMarkerLifeCount				# in prtMarkerCounterUnits
+      - prtMarkerStatus
+      - prtMarkerSuppliesMaxCapacity
+      - prtMarkerSuppliesLevel
+      - prtMarkerSuppliesSupplyUnit		# 19 = percent, 7 = impressions
+      - prtInputMaxCapacity				# 8 = sheets
+      - prtInputStatus
+      - prtOutputMaxCapacity
+
+    lookups: &print_common_lookups
+      - source_indexes: [hrDeviceIndex]
+        lookup: hrDeviceDescr
+        mprefix: [hrDeviceStatus,hrPrinterStatus]
+        rename: name
+      - source_indexes: [hrDeviceIndex]
+        lookup: hrDeviceIndex
+        mprefix: [hrDeviceStatus] # M5526cdn is bogus - same desc for each dev
+        rename: idx
+      - source_indexes: [prtInputIndex]
+        lookup: prtInputIndex
+        mprefix: [prtInputMaxCapacity,prtInputStatus]
+        rename: idx
+      - source_indexes: [hrDeviceIndex, prtInputIndex]
+        lookup: prtInputName
+        mprefix: [prtInput]
+        rename: src
+      - source_indexes: [hrDeviceIndex, prtMarkerSuppliesIndex]
+        lookup: prtMarkerSuppliesDescription
+        mprefix: [prtMarkerSupplies]
+        rename: supply
+        revalue:
+          regex: '[^ -~]*([ -~]+)[^ -~]*' # ascii printables chars, only.
+          value: '$1'
+      - source_indexes: [hrDeviceIndex,prtOutputIndex]
+        lookup: prtOutputName
+        mprefix: [prtOutput]
+        rename: dst
+      - source_indexes: [prtOutputIndex]
+        lookup: prtOutputIndex
+        mprefix: [prtOutputMaxCapacity] # TASKalfa 3252ci has no prtOutputName
+        rename: idx
+      - source_indexes: [prtMarkerIndex]
+        lookup: prtMarkerIndex
+        mprefix: [ prtMarkerLifeCount, prtMarkerStatus, prtMarkerCounterUnit ]
+        rename: idx
+        drop_source_indexes: true
+
+    overrides: &print_common_overrides
+      sysUpTime:
+        type: uptime
+        regex_extracts:
+          .boot_time:
+            - regex: '(.*)'
+              value: '$1'
+      prt{Input,Output}Name¦prtMarkerSuppliesDescription¦hrDeviceDescr:
+        type: DisplayString
+
+
+  # Rarely needed/static print-MIB stuff with indexes resolved. Should work
+  # with all printers.
+  print_common_misc_template:
+    fallback_label: val
+    walk: &print_common_misc_walk
+      - hrDeviceDescr
+      - hrDeviceType
+      - hrMemorySize
+      - prtAlertDescription
+      - prtConsoleDescription
+      #- prtChannelProtocolVersion
+      - prtChannelState
+      - prtChannelStatus
+      - prtChannelType
+      #- prtCoverDescription
+      - prtCoverStatus
+      - prtInputCapacityUnit
+      - prtInputDimUnit
+      - prtGeneralPrinterName
+      - prtGeneralSerialNumber	# 1.3.6.1.2.1.43.5.1.1.17
+      - prtGeneralServicePerson
+      #- prtInputDescription
+      - prtInputName
+      - prtInputMediaName
+      - prtInputType
+      - prtInterpreterDescription
+      - prtMarkerColorantValue
+      #- prtMarkerSuppliesDescription
+      - prtMarkerSuppliesType	# 1.3.6.1.2.1.43.11.1.1.5
+      - prtMarkerPowerOnCount
+      - prtOutputCapacityUnit
+      #- prtOutputDescription
+      #- prtOutputName
+      - sysDescr
+      - sysName
+
+    lookups: &print_common_misc_lookups
+      - source_indexes: [hrDeviceIndex]
+        lookup: hrDeviceDescr
+        mprefix: [hrDeviceType]
+        rename: name
+      # M5526cdn and Kyocera Eco are buggy - same desc for each dev
+      - source_indexes: [hrDeviceIndex]
+        lookup: hrDeviceIndex
+        mprefix: [hrDeviceStatus,hrDeviceDescr,hrDeviceType]
+        rename: idx
+      - source_indexes: [prtChannelIndex]
+        lookup: prtChannelIndex
+        mprefix: [prtChannel]
+        rename: idx
+      - source_indexes: [hrDeviceIndex,prtChannelIndex]
+        lookup: prtChannelProtocolVersion # yes, the name is really misleading
+        mprefix: [prtChannel]
+        rename: name
+        revalue:
+          regex: '[^ -~]*([ -~]*)[^ -~]*'
+          value: '$1'
+      - source_indexes: [hrDeviceIndex,prtCoverIndex]
+        lookup: prtCoverDescription
+        mprefix: [prtCoverStatus]
+        rename: supply
+      - source_indexes: [prtInputIndex]
+        lookup: prtInputIndex
+        mprefix: [prtInput]
+        rename: idx
+      - source_indexes: [hrDeviceIndex, prtInputIndex]
+        lookup: prtInputName
+        mprefix: [prtInput]
+        rename: src
+      - source_indexes: [hrDeviceIndex, prtMarkerSuppliesIndex]
+        lookup: prtMarkerSuppliesDescription
+        mprefix: [prtMarkerSupplies]
+        rename: supply
+        revalue:
+          regex: '[^ -~]*([ -~]+)[^ -~]*'
+          value: '$1'
+      - source_indexes: [hrDeviceIndex,prtOutputIndex]
+        lookup: prtOutputName
+        mprefix: [prtOutput]
+        rename: dst
+      # TASKalfa 3252ci has no prtOutputName
+      - source_indexes: [prtOutputIndex]
+        lookup: prtOutputIndex
+        mprefix: [prtOutputCapacityUnit]
+        rename: idx
+      # because of OfficeJet Pro
+      - source_indexes: [prtConsoleLightIndex]
+        lookup: prtConsoleLightIndex
+        mprefix: [prtConsoleDescription]
+        rename: idx
+      # Designjet T1100ps 44in
+      - source_indexes: [prtMarkerIndex]
+        lookup: prtMarkerIndex
+        mprefix: [ prtMarkerPowerOnCount ]
+        rename: idx
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          - prtAlertDescription
+        drop_source_indexes: true
+
+    overrides: &print_common_misc_overrides
+      <<: *print_common_overrides
+      prtInterpreter{Description,LangLevel}:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: 'N/A' # Samsung ML-3050
+              value: '@drop@'
+      prtMarkerColorantValue:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '[^ -~]*([ -~]+)[^ -~]*'
+              value: '$1'
+      prt{Alert,Console,Cover,Input,MediaPath,Output}Description¦prtConsoleDisplayBufferText¦prtChannelProtocolVersion¦prtGeneral{CurrentOperator,PrinterName,SerialNumber,ServicePerson}¦prtInput{Model,MediaName,VendorName}¦prtLocalization{Country,Language}¦prtOutput{Model,VendorName}:
+        type: DisplayString
+
+
+  # This one can be used to explore the information which a HP printer provides
+  # via SNMP enterprise MIB, only. It should _not_ be used for periodic queries,
+  # because it takes a long time and is probably very challenging for the
+  # printer. The settings were tested with hp LaserJet M750 and 4200. However,
+  # HP's SNMP implementation seems to be very bogus/ancient and thus requires a
+  # lot of type/value tweaks. Therefore for other printers you probably need to
+  # add some additional tweaks for some SNMP variables to get more or less
+  # human readable values. Here the usual HP junk gets adjusted, but indexes
+  # are not resolved.
+  hp_printer_private:
+    fallback_label: val
+    walk: &hp_printer_private_walk
+      - private
+
+    overrides: &hp_printer_private_overrides
+      asset-number¦background-status-msg-line{1,2}-part1¦consumable-reorder-url¦consumable-status-{oem-name,serial-number,cartridge-model,manufacturing-date,first-install-date,manufacturer-name,last-use-date,partnumber}¦default-media-name¦device-{configure-printer-parameters,location,name}¦eprint-email-address¦eprint-printer-code¦firmware-download-{name,version}¦formatter-serial-number¦fw-rom-{datecode,revision}¦job-info-name{1,2}¦job-storage-{encryption,mode,type}¦localization-{countries,languages}-supported¦media{1..41}{,-short}-name¦media-size-supported-driver-n-string¦model-{name,number}¦override-media-name¦pdf-version¦phd1-diagnostics-nvram-data¦print-engine-revision¦serial-number¦service-id¦socket-ping-job-events-version¦upgradable-devices-{name,version}¦usage-instructions-line{1..4}¦web-server-{password,url}:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*)' # chomp \xFDE8 prefix
+              value: '$1'
+      mio{1..4}-{manufacturing-info,model-name}:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*).' # chomp \xFDE8 prefix and trailing \x00
+              value: '$1'
+      channelprinteralert:
+        type: InetAddressIPv6
+      date-and-time¦{error,warning}{1..50}-date-time:
+        type: DateAndTime
+      engine-{media-modes-supported1,self-diagnostic}¦finisher-image-rotation¦install-date¦job-info-attr-{1..16}:
+        type: DisplayString
+        # ok for M750, but 2 chars prefix garbage for 4200
+        regex_extracts:
+          '':
+            - regex: '[^ -~]*([ -~]+)[^ -~]*' # drop non-ascii chars
+              value: '$1'
+
+    lookups: &hp_printer_private_lookups
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          # M750
+          - cartridge-adaptive-gain
+          - channel-{bytes-{received,sent},io-errors,jobs-received,mio}
+          - consumable-{current-state,life-{low-threshold,usage-units{,-remaining}},pages-printed-with-supply,status-{authentication,capacity-units,cartridge-model,developer-life{,-units},drum-life{,-units},engine-{job-count,usage-{count,units}},first-install-date,formatter-color-page-count,info,last-use-date,manufacturer-name,manufacturing-{date,signature},oem-name,printer-design-compatibility,serial-number,tls-max-value,total-capacity,total-equiv-page-count,{mono,color,total}-page-count,usage-{count,units},web-service-access-{control,data}}}
+          - custom-paper-{,x}feed-dim¦destination-bin-usage-count¦estimated-page-yield{,-unit}
+          - input-tray-{min,max}-media-{,x}feed-dim
+          - job-info-accounting-{{black,cyan,magenta,yellow}-dots,{color,grayscale}-impression-count,job-type,media-{{duplex,simplex}-count,size,type}}
+          - job-info-{attr-{1..15},change-id,name{1,2},outbins-used,outcome,page-count-current-original,pages-{in-original,printed,processed},physical-outbins-used,{printed,requested}-originals,state}
+          - media{1..41}-{engine-media-mode,name,page-count,short-name}¦media-size-{count,supported-driver-n-string}¦printed-media-{color-{dimplex,duplex,simplex,total}-count,combined-{duplex-count,simplex-count,total},dimplex-count,{duplex,simplex}-{charge,count},total-charge}
+          - print-meter-equivalent-impression-count¦printed-modes-{color,mono,total}-count¦rpc-{bind,bound}-protocol-address
+          - source-tray-usage-count
+          - total-kilo-pixels-per-cartridge
+          - supplies-at-very-low-{delay-limit,setting}
+          # 4200
+          - job-info-{accounting-finishing-options,io-source,size,stage}
+          - media-size-west-edge-{first,second}-side-offset¦media-size-west-edge-side-offset-by-tray¦printed-media-maximum-pixels-per-page
+          - control-panel-display-graphical-contents
+          # 5500
+          - printer-average-marking-agent-{coverage-{actual,sum,sum-squared},units-per-gram}
+          - marking_agent_density_setting
+          - upgradable-devices-{current-state,version,write-{time,status-supported}}
+          # M553
+          - consumable-status-{duplex-sheet-count,input-option-sheet-count,job-count,page-count-{a4-letter,b5-executive,envelope,half-speed,legal,quarter-speed,third-speed,xy-other}}
+
+
+  # Interesting HP enterprise stuff, which is worth to get queried periodically.
+  # Based on Futuresmart3- and Jetdirect-MIB and usually works with HP printers,
+  # only.
+  futuresmart3_template:
+    fallback_label: val
+    # NOTE: Because of the odd HP MIB design some vars appear to be leaf nodes
+    #       which causes the generator to put them into the getter and not the
+    #		bulkwalk job.
+    #		Therefore we need to pull its parent and overrides:ignore all the
+    #		ones we do not need/want or we force the generator to assume it is
+    #		not a leaf node but a subtree using the prefix '^'.
+    walk: &futuresmart3_walk
+      # 4200: Supplies status: estimated pages remaining
+      # M750: Information | Supplies Status Page
+      - ^consumable-life-usage-units-remaining	# idx: consumable (Pages)
+      # 4200: Config Page: Preventive Maintenance Interval, remaining pages
+      - consumable-maintenance-{interval,pages-remaining}	# 4200 - idx: cons
+      # M750: Information | Supplies Status Page
+      #       zählt immer 2 je phys. Seite, auch bei dimplex
+      - ^consumable-pages-printed-with-supply	# M750 - idx: consumable
+      - ^consumable-status-developer-life		# idx: consumable (%)
+                                                # 4200: 127 == 100% ?
+      - ^consumable-status-drum-life				# idx: consumable (%)
+      # M750: zählt immer 1 je phys. Seite
+      - ^consumable-status-duplex-sheet-count	# M750
+      # 4200: Supplies status: Number of Jobs Processed
+      - ^consumable-status-engine-job-count		# idx: consumable
+      # M750: zählt immer 2 je phys. Seite, auch bei dimplex
+      - ^consumable-status-formatter-color-page-count	# M750 - idx: cons
+      # Supplies status: Page Count by Paper Size
+      # M750: zählt immer 2 je phys. Seite, auch bei dimplex
+      - ^consumable-status-page-count-{a3-ledger,a4-letter,b5-executive,envelope,legal,xy-other}
+      # M750: zählt immer 2 je phys. Seite, auch bei dimplex
+      - ^consumable-status-total-equiv-page-count	# M750 - idx: consumable
+      - ^consumable-status-total-page-count		# M750 - idx: consumable
+      # 4200: Supplies status: remaining cartridges & maintenance kit|fuser in %
+      - ^consumable-status-usage-count			# idx: consumable
+      - device-name
+      - duplex-blank-pages						# M750: detects blank pages ?
+      # M750: zählt immer 1 je phys. Seite
+      - duplex-page-count
+      - ^estimated-page-yield					# consumable ISOpages
+      # 4200: Config Page: Page Count
+      # M750: Information | Usage Page | Impressions Total
+      # M750: zählt immer 2 je phys. Seite, auch bei dimplex
+      - ^media-size-count						# M750 - idx: pageSize
+      # M750: zählt immer 2 je phys. Seite, auch bei dimplex
+      - '{pcl,pdf,postscript}-total-page-count'
+      - printed-media-color-usage				# idx: pageSize
+      ## color page printed in duplex mode but with a blank side
+      - printed-media-color-dimplex-count		# M750 - idx: pageSize, skip 0
+      # M750: zählt immer 1 je phys. Seite
+      - printed-media-color-duplex-count		# M750 - idx: pageSize, skip 0
+      - printed-media-color-simplex-count		# M750 - idx: pageSize, skip 0
+      - printed-media-color-total-count			# M750 - idx: pageSize, screwed?
+      # M750: zählt immer 1 je phys. Seite
+      - ^printed-media-combined-duplex-count	# M750 - idx: pageSize, skip 0
+      # M750: zählt immer 1 je phys. Seite
+      - printed-media-combined-duplex-total		# M750
+      - ^printed-media-combined-simplex-count	# M750 - idx: pageSize, skip 0
+      - printed-media-combined-simplex-total	# M750
+      - ^printed-media-combined-total			# M750 - idx: pageSize, screwed?
+      - ^printed-media-dimplex-count			# M750 - idx: pageSize, skip 0
+      - ^printed-media-duplex-count				# M750 - idx: pageSize, skip 0
+      - ^printed-media-simplex-count			# M750 - idx: pageSize, skip 0
+      - sleep-mode								# device in sleep mode: 0|1
+      # M750: zählt immer 2 je phys. Seite, auch bei dimplex
+      - total-{color,mono}-page-count			# M750
+      - ^total-kilo-pixels-per-cartridge		# M750 - idx: cartridge (600dpi)
+
+    lookups: &futuresmart3_lookups
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          # M750
+          - printed-media-color-{dimplex,duplex,simplex,total}-count
+          - printed-media-combined-{{duplex,simplex}-{count,total},total}
+          - printed-media-{dimplex,duplex,simplex}-count
+          - printed-media-maximum-pixels-per-page
+          - media-size-count
+        rename: size
+        remap: &hp_size_remap
+          # see also printer-media-size-supported-driver-n-string
+          '1': US_Executive
+          '2': US_Letter
+          '3': US_Legal
+          '4': US_EDP
+          '5': European_EDP
+          '6': ReservedDoNotUse
+          '7': US_GovernmentLetter
+          '8': US_GovernmentLegal
+          '9': Folio
+          '10': Foolscap
+          '11': Ledger
+          '12': CSize
+          '13': DSize
+          '14': ESize
+          '15': Statement
+          '16': SuperB
+          '17': ROC_16K
+          '18': Executive
+          '19': ROC_8K
+          '20': A10
+          '21': A9
+          '22': A8
+          '23': A7
+          '24': A6
+          '25': A5
+          '26': A4
+          '27': A3
+          '28': A2
+          '29': A1
+          '30': A0
+          '31': JIS2_A0
+          '32': JIS4_A0
+          '33': PRC_8K_270x390
+          '34': PRC_16K_195x270
+          '35': PRC_8K_260x368
+          '36': RA4
+          '37': SRA4
+          '38': SRA3
+          '39': RA3
+          '40': JIS_B10
+          '41': JIS_B9
+          '42': JIS_B8
+          '43': JIS_B7
+          '44': JIS_B6
+          '45': JIS_B5
+          '46': JIS_B4
+          '47': JIS_B3
+          '48': JIS_B2
+          '49': JIS_B1
+          '50': JIS_B0
+          '60': B10
+          '61': B9
+          '62': B8
+          '63': B7
+          '64': B6
+          '65': B5
+          '66': B4
+          '67': B3
+          '68': B2
+          '69': B1
+          '70': B0
+          '71': JapansePostcardSingle
+          '72': JapansePostcardDouble
+          '73': ISOA6Postcard
+          '74': IndexCard_4x6
+          '75': IndexCard_5x8
+          '76': Photo_4x6
+          '77': JapanesePostcardWithTab
+          '78': IndexCard_3x5
+          '79': Commercial9
+          '80': Monarch
+          '81': Commercial10
+          '82': Catalog
+          '83': No10_Envelope
+          '89': PRC_16K_184x260
+          '90': DL
+          '91': C5
+          '92': C6
+          '93': C4
+          '100': InternationalB5
+          '101': Custom
+          '102': No9_Envelope
+          '108': CustomCard
+          '109': US_EnvelopeA2
+          '110': Japanse_EnvLong3
+          '111': Japanse_EnvLong4
+          '112': Japanes_eEnv2
+          '118': Photo_10x15
+          '119': PhotoCabinet
+          '120': TabloidExtra
+          '121': PhotoLSizeCard
+          '122': IndexCard_5x7
+          '123': PhotoESizeCard
+          '124': PhotoKGSizeCard
+          '125': Photo2ESizeCard
+          '126': Photo2LSizeCard
+          '257': US_ExecutiveR
+          '258': US_LetterR
+          '273': ROC_16KR
+          '280': A6R
+          '281': A5R
+          '282': A4R
+          '300': BR6R
+          '301': B5R
+          '302': StatementR
+          '32764': AnyCustomSize
+          '32765': AnySize
+          '32766': CustomRoll
+          '32767': UnknownMediaSize
+          '65234': StatementWR
+          '65235': B5WR
+          '65254': A4WR
+          '65255': A5WR
+          '65278': US_LetterWR
+          '65490': B4W
+          '65491': B5W
+          '65509': A3W
+          '65510': A4W
+          '65511': A5W
+          '65521': StatementW
+          '65530': LedgerW
+          '65534': US_LetterW
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix: 
+          - consumable-life-usage-units-remaining
+          - consumable-pages-printed-with-supply
+          - consumable-status-{developer-life,drum-life,{duplex-sheet,engine-job,{formatter_color,total,total_equiv}-page,usage}-count}
+          - consumable-status-page-count-{a3-ledger,a4-letter,b5-executive,envelope,legal,xy-other}
+          - estimated-page-yield
+          - total-kilo-pixels-per-cartridge
+        rename: supply
+        remap: &hp_supplies_remap
+          # see also prtMarkerColorantValue, prtMarkerSuppliesType
+          '1': 'black'   # 'tonerCartridge_black'
+          '2': 'cyan'    # 'tonerCartridge_cyan' or 'maintenanceKit' for b/w
+          '3': 'magenta' # 'tonerCartridge_magenta'
+          '4': 'yellow'  # 'tonerCartridge_yellow'
+          '5': 'transferUnit'
+          '6': 'fuser'
+          '7': 'cleanerUnit'
+
+    overrides: &futuresmart3_overrides
+      device-name:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*)'
+              value: '$1'
+      consumable-status-page-count-{a3-ledger,a4-letter,b5-executive,envelope,legal,xy-other}¦printed-media-{color-{dimplex,duplex,simplex,total},combined-{duplex,simplex},{dimplex,duplex,simplex}}-count¦printed-media-combined-total¦media-size-count:
+        remap:
+          '0': '@drop@'
+
+
+  # Other HP enterprise stuff, which is not worth to get queried periodically
+  # but might be interesting/goog to know from time-to-time. Also based on
+  # futuresmart3- and Jetdirect-MIB. Usually works for HP printers, only.
+  futuresmart3_misc_template:
+    fallback_label: val
+    walk: &futuresmart3_misc_walk
+      - autocleaning-page-frequency				# 4200
+      - autocleaning-page-size					# 4200
+      - ^consumable-life-low-threshold			# M750 - idx: consumable
+      - ^consumable-life-usage-units			# idx: consumable (pages)
+      - ^consumable-status-capacity-units		# 4200: 2 = 1K pages (5% cover)
+#												# M750: 5 = ???
+      - ^consumable-status-cartridge-model
+      - ^consumable-status-developer-life-units	# idx: consumable (%)
+      - ^consumable-status-drum-life-units		# idx: consumable (%)
+      - ^consumable-status-engine-usage-count	# idx: consumable (%)
+      - ^consumable-status-engine-usage-units	# idx: consumable (%)
+      - ^consumable-status-first-install-date	# idx: consumable
+      - ^consumable-status-job-count			# idx: consumable ???
+      - ^consumable-status-last-use-date		# idx: consumable (YYmmdd)
+      - ^consumable-status-manufacturing-date	# idx: consumable (YYmmdd)
+      - ^consumable-status-tls-max-value		# M750 - idx: consumable
+      - ^consumable-status-total-capacity		# idx: consumable
+      - ^consumable-status-usage-units			# idx: consumable (%)
+      - ^custom-paper-{,x}feed-dim				# M750
+      - default-{bits-per-pixel,copies,{horizontal,vertical}-black-resolution}
+      - default-{lines-per-page,media-{size,name},print-quality,ret,vmi}
+      - default-custom-paper-{{,x}feed-dim,dim-unit}
+      - ^destination-bin-usage-count				# M750 - hmmm, skip 0 vals
+      - device-location
+      - encryption-password-{{min,max}-length,type}	# M750
+      - ^estimated-page-yield-unit			# M750 - idx: consumable (ISOpages)
+      - energy-star
+      - engine-media-modes-supported1
+      - eprint-{email{,-address},enabled,hp-web-services,printer-code,supported}
+      - host-application-available-memory		# in bytes
+      - impression-based-duplex-count-supported
+      - input-tray-auto-select
+      - ^input-tray-{min,max}-media-{,x}feed-dim
+      - install-date
+      - job-storage-{available,encryption,mode,type}	# M750
+      - localization-{countries,languages}-supported
+      - media{1..41}-short-name					# media name in selected lang
+      - media{1..41}-page-count					# phys. pages pulled from intray
+      - ^media-size-supported-driver-n-string	# pageSizes
+      - ^media-size-west-edge-{{first,second}-side-offset,side-offset-by-tray}
+      - mio										# JetDirect cards
+      #		- mio{1..4}-{model-name,manufacturing-info,type}
+      - model-name								# model
+      - '{model,serial}-number' # P/N , S/N
+      - override-media-size						# all avail pageSizes
+      - powersave-enable-type					# M750
+      - pdf-{enabled,version}					# PDF print enabled
+      - print-density							# 0..10
+      - ^print-meter-equivalent-impression-count	# M750 - copy mono,color
+#			idx0:
+#				1 = Monochrome
+#				2 = Color
+#				3 = Composite Black
+#				4 = General Office Accent
+#				5 = General Office Color
+#				6 = Professional Accent
+#				7 = Professional Color
+#				8 = Presentation Accent
+#				9 = Presentation Color
+#				10 = MAX DPI Accent
+#				11 = MAX DPI Color
+#				12 = Blank
+#				13 = Total
+#				14 = Accent Color
+#				15 = Full Color
+#			idx1:
+#				1 = Print (I/O Port or Internal Pages)
+#				2 = Copy (Scanner)
+#				3 = FAX (Modem)
+#			e.g.: _idx="1.1" or _idx="2.1" = 0x467A0266
+      # M750: Information | Usage Page - at least _idx=1 seems to be close to
+      #       the A4 row, i.e. A4-{mono,color,total} impressions.
+      - printed-modes-usage					# however, mode is not documented
+      #	- printed-modes-color-count			# M750 - idx: pageSize, skip 0
+      #	- printed-modes-mono-count			# M750 - idx: pageSize, skip 0
+      #	- printed-modes-total-count			# M750 - idx: pageSize, skip 0
+      - printed-modes-usage-total			# M750
+      - ^printed-media-maximum-pixels-per-page		# 4200 - idx: pageSize
+      - ^supplies-at-very-low-{delay-limit,setting}	# M750 - idx: supply
+      - tray{1..3}-media-size-loaded					# M750 - idx: tray
+      - tray{1..3}-misprint-behavior-setting			# useless
+
+    lookups: &futuresmart3_misc_lookups
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          - consumable-life-{low-threshold,usage-units}
+          - consumable-status-{{capacity,developer_life,drum_life,engine_usage,usage}_units,engine_usage_count,last_use_date,tls_max_value,total_capacity}
+          - consumable-status-{cartridge-model,{first-install,last-use,manufacturing}-date,job-count}
+          - estimated_page_yield_unit
+          - supplies-at-very-low-{delay-limit,setting}
+        rename: supply
+        remap:
+          <<: *hp_supplies_remap
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          - destination_bin_usage_count
+          - printed-modes-
+          - print-meter-equivalent-impression-count
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          - custom-paper-{,x}feed-dim
+          - input-tray-m
+        rename: tray
+        revalue:
+          regex: '[0-9]+\.([0-9]+)'
+          value: '$1'
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix:
+          - media-size-west-edge-{{first,second}-side-offset,side-offset-by-tray}
+          - printed-media-maximum-pixels-per-page
+        rename: size
+        remap:
+          <<: *hp_size_remap
+      - source_indexes: []
+        lookup: 'media$1-name'
+        mprefix: ['_media([0-9]+)-page-count']
+        rename: name
+        revalue:
+          regex: '..(.*)'
+          value: '$1'
+        remap: # not interested in non.existing paper names
+          '': '@drop@'
+      - source_indexes: []
+        lookup: 'media$1-name'
+        mprefix: ['_media([0-9]+)-short-name']
+        rename: name
+        revalue:
+          regex: '..(.*)'
+          value: '$1'
+      - source_indexes: []
+        lookup: "_idx"
+        mprefix: [ 'tray{1..3}-m' ]
+        rename: tray
+        revalue:
+          regex: '([0-9]+)\..*'
+          value: '$1'
+
+    overrides: &futuresmart3_misc_overrides
+      media{1..41}-page-count:
+        rename:
+          - value: media_page_count
+            sub_oids: '.*'
+      media{1..41}-short-name:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*).'
+              value: '$1'
+        rename:
+          - value: media_short_name
+            sub_oids: '.*'
+      mio{1..4}-{manufacturing-info,model-name}:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*).'
+              value: '$1'
+      consumable-status-{cartridge-model,{first-install,last-use,manufacturing}-date}¦install-date¦device-location:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*)'
+              value: '$1'
+      default-media-name¦engine-media-modes-supported1¦eprint-{email-address,printer-code}¦job-storage-{encryption,mode,type}¦localization-{countries,languages}-supported¦media-size-supported-driver-n-string¦model-{name,number}¦pdf-version¦serial-number:
+        type: DisplayString
+        regex_extracts:
+          '':
+            - regex: '..(.*)'
+              value: '$1'
+      media-size-west-edge-{first,second}-side-offset¦media-size-west-edge-side-offset-by-tray¦printed-media-maximum-pixels-per-page:
+        remap:
+          '0': '@drop@'
+      tray{1..3}-media-size-loaded:
+        rename:
+          - value: tray_media_size_loaded
+            sub_oids: '.*'
+      tray{1..3}-misprint-behavior-setting:
+        rename:
+          - value: tray_misprint_behavior_setting
+            sub_oids: '.*'
+
+  test:
+    walk:
+      - tray{1..3}-media-size-loaded					# M750 - idx: tray
+    lookups:
+      - source_indexes: []
+        lookup: '_idx'
+        mprefix: [ 'tray{1..3}-m' ]
+        rename: tray
+        revalue:
+          regex: '([0-9]+)\..*'
+          value: '$1'
+    overrides:
+      tray{1..3}-media-size-loaded:
+        rename:
+          - value: tray_media_size_loaded
+            sub_oids: '.*'
+
+  # The more or less catch all useful stuff for HP printers.
+  hp_printer:
+    walk: *print_common_walk
+    overrides:
+      <<: *print_common_overrides
+    lookups: *print_common_lookups
+    walk: *futuresmart3_walk
+    overrides:
+      <<: *futuresmart3_overrides
+    lookups: *futuresmart3_lookups
+
+    # make snakeyaml happy, i.e. take all referenced walks/lookups into account
+    walk:
+      - _dummy
+    lookups:
+      - source_indexes: [_dummy]
+        lookup: _dummy
+
+  # For toshiba printers there is no enterprise MIB available and no
+  # documentation of these values have been found so far. So restricted to the
+  # useful stuff of the common print-MIB :(. 
+  toshiba_printer:
+    walk: *print_common_walk
+    overrides:
+      <<: *print_common_overrides
+    lookups: *print_common_lookups
+
+    walk:
+      - _dummy
