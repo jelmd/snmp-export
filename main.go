@@ -108,7 +108,7 @@ func handler(w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	}
 
 	logger = log.With(logger, "module", moduleName, "target", target)
-	level.Debug(logger).Log("msg", "Starting scrape")
+	level.Debug(logger).Log("msg", "Starting scrape", "compact", compact)
 
 	start := time.Now()
 	registry := prometheus.NewRegistry()
@@ -178,7 +178,7 @@ func main() {
 	ts := log.TimestampFormat( func() time.Time { return time.Now() }, "2022-06-10_15:04:05.000", )
 	logger = log.With(logger, "ts", ts, "caller", log.DefaultCaller)
 
-	level.Info(logger).Log("msg", "Starting snmp_exporter", "version", Version)
+	level.Info(logger).Log("msg", "Starting snmp-export", "version", Version)
 
 	// Bail early if the config is bad.
 	var err error

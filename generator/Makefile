@@ -10,15 +10,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Portions Copyright 2022 Jens Elkner
 
 MIBDIR   := mibs
-MIB_PATH := 'mibs'
 
-CURL_OPTS ?= -s --retry 3 --retry-delay 3 --fail
-
-DOCKER_IMAGE_NAME ?= snmp-generator
-DOCKER_IMAGE_TAG  ?= $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
-DOCKER_REPO       ?= prom
+CURL_OPTS ?= -q --retry 3 --retry-delay 3 --fail
 
 APC_URL           := 'https://download.schneider-electric.com/files?p_File_Name=powernet432.mib'
 ARISTA_URL        := https://www.arista.com/assets/data/docs/MIBS
@@ -44,46 +40,11 @@ RARITAN_URL       := http://cdn.raritan.com/download/PX/v1.5.20/PDU-MIB.txt
 INFRAPOWER_URL    := https://www.austin-hughes.com/support/software/infrapower/IPD-MIB.7z
 LIEBERT_URL       := https://www.vertiv.com/492204/contentassets/b00273585e0a453a9c983523e8a0d6ff/lgpmib-unix_rev16.tar
 
-.DEFAULT: all
-
-.PHONY: all
-all: mibs
-
-clean:
-	rm -rf \
-		$(MIBDIR)/* \
-		$(MIBDIR)/.cisco_v2 \
-		$(MIBDIR)/.net-snmp \
-		$(MIBDIR)/.paloalto_panos \
-		$(MIBDIR)/.synology \
-		$(MIBDIR)/.kemp-lm
-
-DOLLAR := '$$'
-
-ELFEDIT ?= $(shell test `uname -s` = SunOS && printf /usr/bin/elfedit || printf true )
-
-generator: *.go
-	go build -trimpath -ldflags '-extldflags -zignore' -ldflags '-extldflags -zdefs'
-	ADDR=`$(ELFEDIT) -e 'dyn:runpath -o num' generator` && \
-	$(ELFEDIT) -e "str:set -shnam .dynstr -strndx $$ADDR $(DOLLAR)ORIGIN:$(DOLLAR)ORIGIN/../lib/amd64" generator
-
-generate: generator mibs
-	MIBDIRS=$(MIB_PATH) ./generator --fail-on-parse-errors generate
+generate: mibs
+	MIBDIRS='$(MIB_PATH)' PATH=$(BASEDIR)/bin:$(PATH) snmp-export-cfg --fail-on-parse-errors generate
 
 parse_errors: generator mibs
-	MIBDIRS=$(MIB_PATH) ./generator --fail-on-parse-errors parse_errors
-
-.PHONY: docker
-docker:
-	docker build -t "$(DOCKER_REPO)/$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" .
-
-.PHONY: docker-publish
-docker-publish:
-	docker push "$(DOCKER_REPO)/$(DOCKER_IMAGE_NAME)"
-
-.PHONY: docker-tag-latest
-docker-tag-latest:
-	docker tag "$(DOCKER_REPO)/$(DOCKER_IMAGE_NAME):$(DOCKER_IMAGE_TAG)" "$(DOCKER_REPO)/$(DOCKER_IMAGE_NAME):latest"
+	MIBDIRS='$(MIB_PATH)' PATH=$(BASEDIR)/bin:$(PATH) snmp-export-cfg --fail-on-parse-errors parse_errors
 
 .PHONY: mibs
 mibs: mib-dir \
