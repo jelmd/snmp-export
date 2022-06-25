@@ -114,7 +114,7 @@ func ScrapeTarget(ctx context.Context, target string, config *config.Module, log
 	// Set the options.
 	snmp := gosnmp.GoSNMP{}
 	snmp.Context = ctx
-	snmp.MaxRepetitions = config.WalkParams.MaxRepetitions
+	snmp.MaxRepetitions = uint32(config.WalkParams.MaxRepetitions)
 	snmp.Retries = config.WalkParams.Retries
 	snmp.Timeout = config.WalkParams.Timeout
 
