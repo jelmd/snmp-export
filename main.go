@@ -153,6 +153,7 @@ func (sc *SafeConfig) ReloadConfig(configFile string) (err error) {
 
 func main() {
 	kingpin.HelpFlag.Short('h')
+	kingpin.Version(Version).VersionFlag.Short('V')
 	kingpin.Parse()
 	if *verbose {
 		*lvl = "debug"

@@ -31,6 +31,9 @@ import (
 	"github.com/prometheus/snmp_exporter/config"
 )
 
+// Version must be set via -ldflags '-X'
+var Version string
+
 var reOID = regexp.MustCompile(`^([0-9]+\.)*[0-9]+$`)
 
 func annotateOIDs(node *yaml.Node, nameToNode map[string]*Node) {
@@ -150,6 +153,7 @@ var (
 
 func main() {
 	kingpin.HelpFlag.Short('h')
+	kingpin.Version(Version).VersionFlag.Short('V')
 	command := kingpin.Parse()
 	if *verbose {
 		*lvl = "debug"
