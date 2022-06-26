@@ -15,7 +15,6 @@
 SHELL := $(shell [ -x /bin/ksh93 ] && echo '/bin/ksh93' || echo '/bin/bash' )
 
 VERSION := 2.0.0
-PKG_PREFIX := github.com/prometheus/snmp_exporter
 PATCH ?= patch
 
 # If you have your libnetsnmp.so in a non-standard directory, you may set the
@@ -92,7 +91,7 @@ clean-mibs:
 	rm -rf $(MIBDIR) generator/mibs
 
 clean: clean-mibs
-	rm -rf bin snmp_exporter generator/generator
+	rm -rf bin snmp-export generator/generator
 
 realclean: clean
 	go clean

@@ -32,7 +32,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/prometheus/snmp_exporter/config"
+	"github.com/jelmd/snmp-export/config"
 )
 
 // Version must be set via -ldflags '-X'

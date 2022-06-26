@@ -26,7 +26,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/prometheus/snmp_exporter/config"
+	"github.com/jelmd/snmp-export/config"
 )
 
 // These types have one following the other.

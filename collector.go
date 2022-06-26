@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/prometheus/snmp_exporter/config"
+	"github.com/jelmd/snmp-export/config"
 )
 
 var (

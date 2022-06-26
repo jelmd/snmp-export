@@ -61,7 +61,7 @@ var (
 	}
 )
 
-// Config for the snmp_exporter.
+// Config for snmp-export.
 type Config map[string]*Module
 
 type WalkParams struct {

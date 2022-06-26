@@ -28,7 +28,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/prometheus/snmp_exporter/config"
+	"github.com/jelmd/snmp-export/config"
 )
 
 // Version must be set via -ldflags '-X'
@@ -61,7 +61,7 @@ func annotateOIDs(node *yaml.Node, nameToNode map[string]*Node) {
 	}
 }
 
-// Generate a snmp_exporter config and write it out.
+// Generate a snmp-export config and write it out.
 func generateConfig(nodes *Node, nameToNode map[string]*Node, logger log.Logger) error {
 	outputPath, err := filepath.Abs(*outputPath)
 	if err != nil {

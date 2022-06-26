@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/snmp_exporter/config"
+	"github.com/jelmd/snmp-export/config"
 	yaml "gopkg.in/yaml.v2"
 )
 

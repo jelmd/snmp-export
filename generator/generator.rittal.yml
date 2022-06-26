@@ -1,5 +1,5 @@
 # This is a configuration file for the
-# https://github.com/jelmd/snmp_exporter/tree/main/generator
+# https://github.com/jelmd/snmp-export/tree/main/generator
 # (C) 2022 by Jens Elkner (jel+snmpex@cs.uni-magdeburg.de)
 
 # To translate it into a YAML spec conforming file, you need to pass it through

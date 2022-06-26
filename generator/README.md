@@ -558,7 +558,7 @@ unit1SensorSetHigh:
 Again, the 2nd regex pair is important, otherwise no match would happen for values != 0 and thus no new metric created (and the original gets dropped as usual).
 
 #### remap
-This optional setting allows one to replace a metric's value using a map (instead of a bunch of regex pairs). After the optional regex\_extracts got applied, the value gets converted into its string representation and used as key for the lookup within the map. On match the value of the entry found becomes the metric's value. However, for `counter`, `gauge`, `Float`, `Double`, `DateAndTime` and `EnumAs*` a new value gets parsed as Float64 first - only if convertion succeeds, the new value will be set (otherwise the metric value is kept as is). If the result of a map lookup is `@drop@` the related metric gets dropped. For `Bits` no remapping gets applied (create an issue on [github](https://github.com/jelmd/snmp_exporter/issues), if you really need it).
+This optional setting allows one to replace a metric's value using a map (instead of a bunch of regex pairs). After the optional regex\_extracts got applied, the value gets converted into its string representation and used as key for the lookup within the map. On match the value of the entry found becomes the metric's value. However, for `counter`, `gauge`, `Float`, `Double`, `DateAndTime` and `EnumAs*` a new value gets parsed as Float64 first - only if convertion succeeds, the new value will be set (otherwise the metric value is kept as is). If the result of a map lookup is `@drop@` the related metric gets dropped. For `Bits` no remapping gets applied (create an issue on [github](https://github.com/jelmd/snmp-export/issues), if you really need it).
 
 
 #### rename

@@ -10,13 +10,13 @@
 	following template.
 	
 	If you include CLI output, please run those programs with additional parameters:
-		snmp_exporter: `-log.level=debug`
+		snmp-export: `-L debug`
 		snmpbulkget etc: `-On`
 -->
 
 ### Host operating system: output of `uname -a`
 
-### snmp_exporter version: output of `snmp_exporter -version`
+### snmp-export version: output of `snmp-export -V`
 <!-- If building from source, run `make` first. -->
 
 ### What device/snmpwalk OID are you using?
