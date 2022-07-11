@@ -1,4 +1,6 @@
 # Copyright 2018 The Prometheus Authors
+# Portions Copyright 2022 Jens Elkner
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -10,15 +12,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# Portions Copyright 2022 Jens Elkner
 
-MIBDIR   := mibs
+
+# This makefile just downloads all MIBs to satisfy generator.yml's content and
+# generates the snmp-export config file snmp.yml. To use the other generator.*
+# examples, you need to download other MIB files as well. Usually extracting
+# http://iks.cs.ovgu.de/~elkner/snmp/mibs.tar.gz should be sufficient to satisfy
+# them.
+
+MIBDIR   := $(PWD)/mibs
 
 CURL_OPTS ?= -q --retry 3 --retry-delay 3 --fail
+TAR ?= $(shell test `uname -s` = 'SunOS' && echo gtar || echo tar )
+SED ?= $(shell test `uname -s` = 'SunOS' && echo gsed || echo sed )
 
-APC_URL           := 'https://download.schneider-electric.com/files?p_File_Name=powernet432.mib'
+APC_URL           := 'https://download.schneider-electric.com/files?p_enDocType=Firmware&p_File_Name=powernet441.mib&p_Doc_Ref=APC_POWERNETMIB_441_EN'
 ARISTA_URL        := https://www.arista.com/assets/data/docs/MIBS
-CISCO_URL         := 'ftp://ftp.cisco.com/pub/mibs/v2/v2.tar.gz'
+CISCO_URL         := 'https://raw.githubusercontent.com/cisco/cisco-mibs/main/v2'
 IANA_CHARSET_URL  := https://www.iana.org/assignments/ianacharset-mib/ianacharset-mib
 IANA_IFTYPE_URL   := https://www.iana.org/assignments/ianaiftype-mib/ianaiftype-mib
 IANA_PRINTER_URL  := https://www.iana.org/assignments/ianaprinter-mib/ianaprinter-mib
@@ -36,15 +46,15 @@ UBNT_AIROS_URL    := https://dl.ubnt.com/firmwares/airos-ubnt-mib/ubnt-mib.zip
 UBNT_AIRFIBER_URL := https://dl.ubnt.com/firmwares/airfiber5X/v4.1.0/UBNT-MIB.txt
 UBNT_DL_URL       := http://dl.ubnt-ut.com/snmp
 WIENER_URL        := https://file.wiener-d.com/software/net-snmp/WIENER-CRATE-MIB-5704.zip
-RARITAN_URL       := http://cdn.raritan.com/download/PX/v1.5.20/PDU-MIB.txt
+RARITAN_URL       := https://cdn.raritan.com/download/PX/v1.5.20/PDU-MIB.txt
 INFRAPOWER_URL    := https://www.austin-hughes.com/support/software/infrapower/IPD-MIB.7z
 LIEBERT_URL       := https://www.vertiv.com/492204/contentassets/b00273585e0a453a9c983523e8a0d6ff/lgpmib-unix_rev16.tar
 
 generate: mibs
-	MIBDIRS='$(MIB_PATH)' PATH=$(BASEDIR)/bin:$(PATH) snmp-export-cfg --fail-on-parse-errors generate
+	MIBDIRS='$(MIBDIR)' PATH=$(BASEDIR)/bin:$(PATH) snmp-export-cfg generate -s
 
-parse_errors: generator mibs
-	MIBDIRS='$(MIB_PATH)' PATH=$(BASEDIR)/bin:$(PATH) snmp-export-cfg --fail-on-parse-errors parse_errors
+parse_errors: mibs
+	MIBDIRS='$(MIBDIR)' PATH=$(BASEDIR)/bin:$(PATH) snmp-export-cfg parse_errors -s
 
 .PHONY: mibs
 mibs: mib-dir \
@@ -96,19 +106,8 @@ $(MIBDIR)/ARISTA-SW-IP-FORWARDING-MIB:
 	@curl $(CURL_OPTS) -o $(MIBDIR)/ARISTA-SW-IP-FORWARDING-MIB "$(ARISTA_URL)/ARISTA-SW-IP-FORWARDING-MIB.txt"
 
 $(MIBDIR)/.cisco_v2:
-	$(eval TMP := $(shell mktemp))
 	@echo ">> Downloading cisco_v2"
-	@mkdir -p $(MIBDIR)/cisco_v2
-	@curl $(CURL_OPTS) -o $(TMP) $(CISCO_URL)
-	tar --no-same-owner -C $(MIBDIR)/cisco_v2 --strip-components=3 -zxvf $(TMP)
-	cp mibs/cisco_v2/AIRESPACE-REF-MIB.my mibs/AIRESPACE-REF-MIB
-	cp mibs/cisco_v2/AIRESPACE-WIRELESS-MIB.my mibs/AIRESPACE-WIRELESS-MIB
-	cp mibs/cisco_v2/ENTITY-MIB.my mibs/ENTITY-MIB
-	cp mibs/cisco_v2/ENTITY-SENSOR-MIB.my mibs/ENTITY-SENSOR-MIB
-	cp mibs/cisco_v2/ENTITY-STATE-MIB.my mibs/ENTITY-STATE-MIB
-	cp mibs/cisco_v2/ENTITY-STATE-TC-MIB.my mibs/ENTITY-STATE-TC-MIB
-	cp mibs/cisco_v2/ISDN-MIB.my mibs/ISDN-MIB
-	@rm $(TMP)
+	@for F in AIRESPACE-REF AIRESPACE-WIRELESS ENTITY ENTITY-SENSOR ENTITY-STATE ENTITY-STATE-TC ISDN ; do curl $(CURL_OPTS) -o $(MIBDIR)/$${F}-MIB $(CISCO_URL)/$${F}-MIB.my ; done
 	@touch $(MIBDIR)/.cisco_v2
 
 $(MIBDIR)/IANA-CHARSET-MIB.txt:
@@ -133,7 +132,7 @@ $(MIBDIR)/.kemp-lm:
 	@curl $(CURL_OPTS) -L -o $(TMP) $(KEMP_LM_URL)
 	@unzip -j -d $(MIBDIR) $(TMP) *.txt
 	# Workaround invalid timestamps.
-	@sed -i.bak -E 's/"([0-9]{12})[0-9]{2}Z"/"\1Z"/' $(MIBDIR)/*.RELEASE-B100-MIB.txt
+	@$(SED) -i.bak -E 's/"([0-9]{12})[0-9]{2}Z"/"\1Z"/' $(MIBDIR)/*.RELEASE-B100-MIB.txt
 	@rm $(MIBDIR)/*.RELEASE-B100-MIB.txt.bak
 	@rm $(TMP)
 	@touch $(MIBDIR)/.kemp-lm
@@ -235,5 +234,5 @@ $(MIBDIR)/LIEBERT_GP_PDU.MIB:
 	$(eval TMP := $(shell mktemp))
 	@echo ">> Downloading LIEBERT_GP_PDU.MIB to $(TMP)"
 	@curl $(CURL_OPTS) -o $(TMP) $(LIEBERT_URL)
-	@tar --no-same-owner -C $(MIBDIR) -xvf $(TMP)
+	@$(TAR) -C $(MIBDIR) -xvf $(TMP)
 	@rm $(TMP)
